@@ -1,0 +1,59 @@
+<view class="page" wx:if="{{detail}}">
+  <view class="head">
+    <image class="avatar" src="{{detail.coach.avatarUrl || '/assets/avatar-default.png'}}" mode="aspectFill" />
+    <view class="head-info">
+      <view class="name">{{detail.coach.name}}
+        <text class="cert" wx:if="{{detail.coach.certVerified}}">资质已认证</text>
+      </view>
+      <view class="sub">{{detail.coach.specialties || '综合训练'}} · {{detail.coach.years}}年教龄</view>
+      <view class="rating" wx:if="{{detail.coach.ratingCount}}">★ {{detail.coach.ratingAvg}}（{{detail.coach.ratingCount}}条评价）</view>
+    </view>
+  </view>
+
+  <video wx:if="{{detail.coach.introVideoUrl}}" class="video" src="{{detail.coach.introVideoUrl}}" />
+  <view class="card" wx:if="{{detail.coach.intro}}">
+    <view class="section-title">自我介绍</view>
+    <view class="rich">{{detail.coach.intro}}</view>
+  </view>
+
+  <view class="card" wx:if="{{detail.scheduleText}}">
+    <view class="section-title">可约时段（每周模板）</view>
+    <view class="schedule">{{detail.scheduleText}}</view>
+    <view class="hint">支持 30 分钟粒度预约，实时日历 M3 上线</view>
+  </view>
+
+  <view class="card">
+    <view class="section-title">在售课包</view>
+    <view class="pkg" wx:for="{{detail.packages}}" wx:key="id" bindtap="onPkg" data-id="{{item.id}}">
+      <view class="pkg-info">
+        <view class="pkg-title">{{item.title}}</view>
+        <view class="pkg-sub">{{item.tags}}</view>
+      </view>
+      <view class="pkg-right">
+        <view class="pkg-price">¥{{item.priceYuan}}起</view>
+        <view class="pkg-go">查看</view>
+      </view>
+    </view>
+    <view class="empty-inline" wx:if="{{!detail.packages.length}}">暂无在售课包</view>
+  </view>
+
+  <view class="card">
+    <view class="section-title">学员评价（{{detail.coach.ratingCount}}）</view>
+    <view class="review" wx:for="{{detail.reviews}}" wx:key="id">
+      <view class="review-head">
+        <text class="review-stars">{{item.rating}}★</text>
+        <text class="review-time">{{item.createdAt}}</text>
+      </view>
+      <view class="review-content" wx:if="{{item.content}}">{{item.content}}</view>
+      <view class="review-reply" wx:if="{{item.coachReply}}">教练回复：{{item.coachReply}}</view>
+    </view>
+    <view class="empty-inline" wx:if="{{!detail.reviews.length}}">暂无评价</view>
+    <navigator class="all-reviews" wx:if="{{detail.coach.ratingCount > 5}}"
+               url="/pages/review/public?type=coach&id={{detail.coach.id}}">查看全部 {{detail.coach.ratingCount}} 条评价 ›</navigator>
+  </view>
+
+  <view class="footer-bar-space"></view>
+  <view class="footer-bar">
+    <button class="book-btn" bindtap="onBook">预约 TA 的课</button>
+  </view>
+</view>

@@ -1,0 +1,26 @@
+<view class="page">
+  <view class="day-strip">
+    <view wx:for="{{days}}" wx:key="*this"
+      class="d {{activeDate === item ? 'd-active' : ''}}"
+      bindtap="onDay" data-date="{{item}}">{{item.slice(5)}}</view>
+  </view>
+
+  <view class="list" wx:if="{{classes[activeDate]}}">
+    <view class="gc" wx:for="{{classes[activeDate]}}" wx:key="id">
+      <view class="gc-main">
+        <view class="gc-time">{{item.timeText}}</view>
+        <view class="gc-title">{{item.class.title}}</view>
+        <view class="gc-sub">{{item.coachName}} · {{item.class.location}} · 余 {{item.left}}/{{item.class.capacity}}</view>
+      </view>
+      <view class="gc-actions">
+        <button wx:if="{{item.class.status === 'enrolling' && item.left > 0}}" class="a a-main" size="mini"
+          bindtap="onEnroll" data-id="{{item.class.id}}" data-pkg="{{item.class.packageId}}">报名</button>
+        <button wx:if="{{item.myStatus === 'enrolled'}}" class="a" size="mini"
+          catchtap="onQuit" data-id="{{item.class.id}}">退出</button>
+        <button wx:if="{{item.myStatus === 'enrolled'}}" class="a a-main" size="mini"
+          catchtap="onCode" data-id="{{item.class.id}}">核销码</button>
+      </view>
+    </view>
+  </view>
+  <view class="empty" wx:else>当天暂无团课</view>
+</view>

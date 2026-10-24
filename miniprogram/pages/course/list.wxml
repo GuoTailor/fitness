@@ -1,0 +1,38 @@
+<view class="page">
+  <view class="filter-bar">
+    <view class="cat-row">
+      <view wx:for="{{categories}}" wx:key="value"
+        class="cat {{activeCategory === item.value ? 'cat-active' : ''}}"
+        bindtap="onCategory" data-value="{{item.value}}">{{item.label}}</view>
+    </view>
+    <scroll-view scroll-x class="tag-row">
+      <view wx:for="{{tags}}" wx:key="*this"
+        class="tag {{activeTag === item ? 'tag-active' : ''}}"
+        bindtap="onTag" data-value="{{item}}">{{item || '不限目标'}}</view>
+    </scroll-view>
+    <view class="search-row">
+      <input class="search-input" placeholder="搜索课包" value="{{keyword}}" bindinput="onKeyword" bindconfirm="onSearch" confirm-type="search" />
+      <button class="search-btn" size="mini" bindtap="onSearch">搜索</button>
+    </view>
+  </view>
+
+  <view class="list">
+    <view class="item" wx:for="{{list}}" wx:key="id" bindtap="onPkgTap" data-id="{{item.id}}">
+      <image class="cover" src="{{item.coverUrl || '/assets/avatar-default.png'}}" mode="aspectFill" />
+      <view class="info">
+        <view class="title">{{item.title}}</view>
+        <view class="meta">
+          <text class="tag-mini" wx:if="{{item.tags}}">{{item.tags}}</text>
+          <text class="rating" wx:if="{{item.ratingCount}}">★ {{item.ratingAvg}}（{{item.ratingCount}}）</text>
+        </view>
+        <view class="bottom">
+          <text class="price">¥{{item.minPrice / 100}}<text class="unit">起</text></text>
+          <text class="sold">已售 {{item.soldCount}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="empty" wx:if="{{!loading && !list.length}}">暂无课包</view>
+  <view class="loading" wx:if="{{loading}}">加载中…</view>
+</view>

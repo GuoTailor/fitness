@@ -1,0 +1,21 @@
+<view class="page">
+  <view class="order" wx:for="{{list}}" wx:key="id">
+    <view class="order-head">
+      <text class="order-no">{{item.orderNo}}</text>
+      <text class="status s-{{item.status}}">{{item.statusText}}</text>
+    </view>
+    <view class="order-body">
+      <view class="title">{{item.title}}</view>
+      <view class="time">{{item.timeText}}</view>
+    </view>
+    <view class="order-foot">
+      <text class="amount">¥{{item.amountYuan}}</text>
+      <view class="actions">
+        <button wx:if="{{item.status === 'pending'}}" class="act act-primary" size="mini" bindtap="onPay" data-id="{{item.id}}">去支付</button>
+        <button wx:if="{{item.status === 'paid'}}" class="act" size="mini" bindtap="onRefund" data-id="{{item.id}}">申请退款</button>
+      </view>
+    </view>
+  </view>
+  <view class="empty" wx:if="{{!loading && !list.length}}">还没有订单，去挑个课包吧</view>
+  <view class="loading" wx:if="{{loading}}">加载中…</view>
+</view>

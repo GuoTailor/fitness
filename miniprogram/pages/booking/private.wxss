@@ -1,0 +1,19 @@
+.coach-bar { background: #fff; padding: 24rpx; font-size: 28rpx; font-weight: 500; }
+.days { white-space: nowrap; background: #fff; padding: 0 12rpx 20rpx; }
+.day { display: inline-block; width: 120rpx; text-align: center; padding: 12rpx 0; border-radius: 12rpx; margin: 0 12rpx; }
+.day-active { background: #00b578; color: #fff; }
+.day-label { font-size: 26rpx; }
+.day-sub { font-size: 22rpx; opacity: .8; margin-top: 4rpx; }
+.card { background: #fff; border-radius: 16rpx; margin: 20rpx 24rpx; padding: 28rpx 24rpx; }
+.section-title { font-size: 30rpx; font-weight: 600; margin-bottom: 16rpx; }
+.slots { display: flex; flex-wrap: wrap; gap: 16rpx; }
+.slot { border: 2rpx solid #eee; border-radius: 10rpx; padding: 12rpx 28rpx; font-size: 26rpx; }
+.slot-active { border-color: #00b578; background: #f0faf6; color: #00b578; font-weight: 600; }
+.mp { border: 2rpx solid #eee; border-radius: 12rpx; padding: 20rpx; margin-bottom: 16rpx; display: flex; justify-content: space-between; align-items: center; }
+.mp-active { border-color: #00b578; background: #f0faf6; }
+.mp-title { font-size: 28rpx; }
+.mp-sub { font-size: 24rpx; color: #999; }
+.empty-inline { color: #bbb; font-size: 24rpx; text-align: center; padding: 24rpx 0; }
+.footer-bar-space { height: 140rpx; }
+.footer-bar { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; padding: 16rpx 24rpx calc(16rpx + env(safe-area-inset-bottom)); box-shadow: 0 -4rpx 16rpx rgba(0,0,0,.04); }
+.submit-btn { background: linear-gradient(135deg,#00b578,#009a66); color: #fff; border-radius: 44rpx; font-size: 30rpx; }

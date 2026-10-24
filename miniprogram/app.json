@@ -1,0 +1,54 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/course/list",
+    "pages/course/detail",
+    "pages/coach/list",
+    "pages/coach/detail",
+    "pages/booking/private",
+    "pages/booking/calendar",
+    "pages/booking/list",
+    "pages/booking/detail",
+    "pages/review/create",
+    "pages/review/list",
+    "pages/review/public",
+    "pages/coach-admin/index",
+    "pages/coach-admin/schedule",
+    "pages/coach-admin/groups",
+    "pages/coach-admin/verify",
+    "pages/coach-admin/reviews",
+    "pages/order/list",
+    "pages/training/index",
+    "pages/mine/mine"
+  ],
+  "window": {
+    "navigationBarBackgroundColor": "#00B578",
+    "navigationBarTextStyle": "white",
+    "navigationBarTitleText": "健身工作室",
+    "backgroundColor": "#F6F7F9",
+    "backgroundTextStyle": "dark"
+  },
+  "tabBar": {
+    "color": "#999999",
+    "selectedColor": "#00B578",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/index/index",
+        "text": "首页"
+      },
+      {
+        "pagePath": "pages/course/list",
+        "text": "课包"
+      },
+      {
+        "pagePath": "pages/mine/mine",
+        "text": "我的"
+      }
+    ]
+  },
+  "sitemapLocation": "sitemap.json",
+  "style": "v2",
+  "lazyCodeLoading": "requiredComponents"
+}

@@ -1,0 +1,18 @@
+.page { padding: 24rpx; }
+.order { background: #fff; border-radius: 16rpx; padding: 24rpx; margin-bottom: 20rpx; }
+.order-head { display: flex; justify-content: space-between; }
+.order-no { font-size: 22rpx; color: #999; }
+.status { font-size: 24rpx; }
+.s-pending { color: #e6a23c; }
+.s-paid { color: #00b578; }
+.s-closed, .s-refunded { color: #999; }
+.s-refunding { color: #e64340; }
+.order-body { margin-top: 14rpx; }
+.title { font-size: 30rpx; }
+.time { font-size: 22rpx; color: #bbb; margin-top: 8rpx; }
+.order-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 16rpx; }
+.amount { color: #e64340; font-size: 32rpx; font-weight: 600; }
+.actions { display: flex; gap: 12rpx; }
+.act { border: 2rpx solid #ddd; color: #555; border-radius: 30rpx; }
+.act-primary { border-color: #00b578; color: #00b578; background: #f0faf6; }
+.empty, .loading { text-align: center; color: #999; font-size: 26rpx; padding: 60rpx 0; }

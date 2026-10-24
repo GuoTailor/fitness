@@ -1,0 +1,19 @@
+<view class="page">
+  <button class="scan-btn" bindtap="onScan">扫一扫核销</button>
+
+  <view class="card">
+    <view class="tip">学员未带手机？让学员报码，在此输入：</view>
+    <view class="row">
+      <input class="input" placeholder="输入核销码（V/G 开头）" value="{{manualCode}}" bindinput="onManualInput" />
+      <button class="go" size="mini" bindtap="onManualSubmit">核销</button>
+    </view>
+  </view>
+
+  <view class="result ok" wx:if="{{lastResult}}">
+    <view class="r-title">✓ {{lastResult.alreadyVerified ? '该码已核销过（幂等）' : '核销成功'}}</view>
+    <view class="r-line">{{lastResult.bizType === 'private' ? '私教课' : '团课'}} · {{lastResult.userName}} {{lastResult.userPhone}}</view>
+  </view>
+  <view class="result bad" wx:if="{{lastError}}">
+    <view class="r-title">{{lastError}}</view>
+  </view>
+</view>

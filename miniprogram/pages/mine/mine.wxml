@@ -1,0 +1,27 @@
+<view class="page">
+  <view class="profile" wx:if="{{user}}">
+    <image class="avatar" src="{{user.avatarUrl || '/assets/avatar-default.png'}}" mode="aspectFill" />
+    <view class="info">
+      <view class="nickname">{{user.nickname || '学员'}}</view>
+      <view class="sub">{{user.phone || '未绑定手机号'}}</view>
+    </view>
+  </view>
+  <view class="card login-card" wx:else>
+    <view class="login-tip">登录后可购买课包、预约教练</view>
+    <button class="btn-primary" bindtap="onLogin">微信一键登录</button>
+  </view>
+
+  <view class="menu card" wx:if="{{user}}">
+    <navigator class="menu-item" url="/pages/training/index">我的课包</navigator>
+    <navigator class="menu-item" url="/pages/booking/list">我的预约</navigator>
+    <navigator class="menu-item" url="/pages/booking/calendar">团课课表</navigator>
+    <navigator class="menu-item" url="/pages/order/list">课包订单</navigator>
+    <navigator class="menu-item" url="/pages/review/create">待评价课程</navigator>
+    <navigator class="menu-item" url="/pages/review/list">我的评价</navigator>
+    <button wx:if="{{!user.phone}}" class="menu-btn" open-type="getPhoneNumber" bindgetphonenumber="onGetPhone" loading="{{phoneBinding}}">
+      绑定手机号
+    </button>
+    <navigator class="menu-item coach-entry" url="/pages/coach-admin/index" wx:if="{{isCoach}}">教练工作台 ›</navigator>
+    <button class="menu-btn logout" bindtap="onLogout">退出登录</button>
+  </view>
+</view>

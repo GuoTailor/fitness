@@ -1,0 +1,11 @@
+.page { padding: 24rpx; }
+.search { margin-bottom: 20rpx; }
+.search-input { background: #fff; border-radius: 36rpx; padding: 16rpx 28rpx; font-size: 26rpx; }
+.coach { display: flex; background: #fff; border-radius: 16rpx; padding: 24rpx; margin-bottom: 20rpx; align-items: center; }
+.avatar { width: 108rpx; height: 108rpx; border-radius: 50%; background: #f0f0f0; }
+.info { margin-left: 24rpx; }
+.name { font-size: 30rpx; font-weight: 600; }
+.cert { font-size: 20rpx; color: #4a90ff; background: #eef4ff; padding: 2rpx 10rpx; border-radius: 6rpx; margin-left: 8rpx; }
+.sub { font-size: 24rpx; color: #999; margin-top: 8rpx; }
+.rating { font-size: 22rpx; color: #ffb400; margin-top: 6rpx; }
+.empty { text-align: center; color: #999; padding: 60rpx 0; }

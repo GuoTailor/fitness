@@ -1,0 +1,16 @@
+<view class="page">
+  <view class="search">
+    <input class="search-input" placeholder="搜索教练" value="{{keyword}}" bindinput="onKeyword" bindconfirm="onSearch" confirm-type="search" />
+  </view>
+  <view class="list">
+    <view class="coach" wx:for="{{list}}" wx:key="id" bindtap="onCoach" data-id="{{item.id}}">
+      <image class="avatar" src="{{item.avatarUrl || '/assets/avatar-default.png'}}" mode="aspectFill" />
+      <view class="info">
+        <view class="name">{{item.name}} <text class="cert" wx:if="{{item.certVerified}}">已认证</text></view>
+        <view class="sub">{{item.specialties || '综合训练'}} · {{item.years}}年教龄</view>
+        <view class="rating" wx:if="{{item.ratingCount}}">★ {{item.ratingAvg}}（{{item.ratingCount}}条）</view>
+      </view>
+    </view>
+  </view>
+  <view class="empty" wx:if="{{!loading && !list.length}}">暂无教练</view>
+</view>

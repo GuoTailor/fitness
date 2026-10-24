@@ -1,0 +1,129 @@
+package config
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+
+	"gopkg.in/yaml.v3"
+)
+
+// Config 全局配置。敏感项（数据库密码、JWT secret）优先从
+// config.local.yaml（不入库）与环境变量读取，方便开发/生产切换。
+type Config struct {
+	Server   ServerConfig   `yaml:"server"`
+	DB       DBConfig       `yaml:"db"`
+	JWT      JWTConfig      `yaml:"jwt"`
+	WeChat   WeChatConfig   `yaml:"wechat"`
+	Pay      PayConfig      `yaml:"pay"`
+	Notify   NotifyConfig   `yaml:"notify"`
+	Video    VideoConfig    `yaml:"video"`
+	OwnerID  int64          `yaml:"owner_id"` // 平台化预留：单店自营阶段固定 1
+	Version  string         `yaml:"-"`
+	LoadedAt time.Time      `yaml:"-"`
+}
+
+type ServerConfig struct {
+	Port    int    `yaml:"port"`
+	BaseURL string `yaml:"base_url"` // 对外地址，拼支付回调等
+	Mode    string `yaml:"mode"`     // debug / release
+}
+
+type DBConfig struct {
+	Host     string `yaml:"host"`
+	Port     int    `yaml:"port"`
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
+	Database string `yaml:"database"`
+	Params   string `yaml:"params"`
+}
+
+func (d DBConfig) DSN() string {
+	params := d.Params
+	if params == "" {
+		params = "charset=utf8mb4&parseTime=True&loc=Local"
+	}
+	return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?%s", d.Username, d.Password, d.Host, d.Port, d.Database, params)
+}
+
+type JWTConfig struct {
+	Secret      string `yaml:"secret"`
+	ExpireHours int    `yaml:"expire_hours"`
+}
+
+type WeChatConfig struct {
+	// Mock 为 true 时登录/手机号走本地模拟，无需真实小程序资质
+	Mock   bool   `yaml:"mock"`
+	AppID  string `yaml:"appid"`
+	Secret string `yaml:"secret"`
+}
+
+type PayConfig struct {
+	// Mock 为 true 时下单直接走「模拟支付成功」，无需商户号
+	Mock          bool   `yaml:"mock"`
+	MchID         string `yaml:"mch_id"`
+	MchSerialNo   string `yaml:"mch_serial_no"`
+	APIv3Key      string `yaml:"apiv3_key"`
+	PrivateKey    string `yaml:"private_key_path"` // 商户私钥文件路径
+	NotifyURL     string `yaml:"notify_url"`
+	RefundNotify  string `yaml:"refund_notify_url"`
+}
+
+type NotifyConfig struct {
+	// Mock 为 true 时不真正调用微信订阅消息，仅记录 notify_log
+	Mock      bool               `yaml:"mock"`
+	templates map[string]string  `yaml:"-"`
+	Templates map[string]string  `yaml:"templates"` // scene -> 模板 ID
+}
+
+type VideoConfig struct {
+	// 课程介绍视频的静态播放地址前缀（nginx 静态目录）
+	BaseURL string `yaml:"base_url"`
+}
+
+// Load 按顺序合并：config.yaml -> config.local.yaml -> 环境变量（DB_PASSWORD / JWT_SECRET）
+func Load(path string) (*Config, error) {
+	cfg := &Config{
+		Server: ServerConfig{Port: 8080, Mode: "debug", BaseURL: "http://localhost:8080"},
+		DB:     DBConfig{Host: "10.96.158.189", Port: 3306, Username: "fitness", Database: "fitness"},
+		JWT:    JWTConfig{Secret: "dev-insecure-secret", ExpireHours: 24 * 30},
+		WeChat: WeChatConfig{Mock: true},
+		Pay:    PayConfig{Mock: true},
+		Notify: NotifyConfig{Mock: true},
+		Video:  VideoConfig{BaseURL: "http://localhost:8080/videos"},
+		OwnerID: 1,
+	}
+	if err := loadYAML(path, cfg); err != nil {
+		return nil, err
+	}
+	// 同目录 local 覆盖（gitignore，放密码等敏感项）
+	local := filepath.Join(filepath.Dir(path), "config.local.yaml")
+	if _, err := os.Stat(local); err == nil {
+		if err := loadYAML(local, cfg); err != nil {
+			return nil, err
+		}
+	}
+	if v := os.Getenv("DB_PASSWORD"); v != "" {
+		cfg.DB.Password = v
+	}
+	if v := os.Getenv("JWT_SECRET"); v != "" {
+		cfg.JWT.Secret = v
+	}
+	if cfg.JWT.ExpireHours <= 0 {
+		cfg.JWT.ExpireHours = 24 * 30
+	}
+	cfg.LoadedAt = time.Now()
+	return cfg, nil
+}
+
+func loadYAML(path string, out *Config) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read config %s: %w", path, err)
+	}
+	if err := yaml.Unmarshal(data, out); err != nil {
+		return fmt.Errorf("parse config %s: %w", path, err)
+	}
+	return nil
+}

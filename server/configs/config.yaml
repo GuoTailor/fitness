@@ -1,0 +1,50 @@
+# fitness-server 默认配置（开发）。敏感项放 config.local.yaml（已 gitignore）或环境变量。
+server:
+  port: 8080
+  mode: debug
+  base_url: http://localhost:8080
+
+db:
+  host: 10.96.158.189          # aos-mysql.dev.svc.cluster.local
+  port: 3306
+  username: fitness
+  database: fitness
+  password: ""                 # 由 config.local.yaml 或 DB_PASSWORD 提供
+
+jwt:
+  secret: ""                   # 由 config.local.yaml 或 JWT_SECRET 提供
+  expire_hours: 720
+
+# 微信小程序能力。mock=true 时：登录 code 即 openid（mock-user-1 造指定账号），
+# 手机号 phone code 即手机号明文。资质办结后改 false 并填 appid/secret。
+wechat:
+  mock: true
+  appid: ""
+  secret: ""
+
+# 微信支付 v3。mock=true 时下单直接走「模拟支付成功」，无需商户号。
+pay:
+  mock: true
+  mch_id: ""
+  mch_serial_no: ""
+  apiv3_key: ""
+  private_key_path: ""
+  notify_url: "https://your-domain/api/v1/pay/notify"
+  refund_notify_url: "https://your-domain/api/v1/pay/refund-notify"
+
+# 订阅消息。mock=true 仅写 notify_log 不真正发送。模板 ID 在小程序后台申请后填入。
+notify:
+  mock: true
+  templates:
+    booking_confirmed: ""
+    booking_new: ""
+    review_invite: ""
+    sessions_warning: ""
+    expire_warning: ""
+
+# 课程介绍视频静态地址前缀（nginx 静态目录）
+video:
+  base_url: "http://localhost:8080/videos"
+
+# 平台化预留：单店自营阶段固定 1
+owner_id: 1

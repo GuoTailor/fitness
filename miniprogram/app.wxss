@@ -1,0 +1,7 @@
+/* 全局样式 */
+page {
+  background: #F6F7F9;
+  font-size: 28rpx;
+  color: #222;
+  font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+}

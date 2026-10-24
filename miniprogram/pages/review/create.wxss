@@ -1,0 +1,33 @@
+.card { background: #fff; border-radius: 16rpx; margin: 20rpx 24rpx; padding: 28rpx 24rpx; }
+
+.section-title { font-size: 30rpx; font-weight: 600; margin-bottom: 12rpx; }
+
+.empty-inline { font-size: 24rpx; color: #999; padding: 24rpx 0; text-align: center; }
+
+.pend-item { display: flex; justify-content: space-between; align-items: center; padding: 20rpx 0; border-bottom: 1rpx solid #f5f5f5; }
+
+.pend-name { font-size: 28rpx; font-weight: 500; }
+
+.pend-sub { font-size: 22rpx; color: #999; margin-top: 6rpx; }
+
+.pend-go { font-size: 24rpx; color: #00b578; }
+
+.cur-name { font-size: 32rpx; font-weight: 600; }
+
+.cur-sub { font-size: 22rpx; color: #999; margin-top: 10rpx; }
+
+.rate-row { display: flex; justify-content: space-between; align-items: center; padding: 16rpx 0; }
+
+.rate-label { font-size: 28rpx; }
+
+.stars { display: flex; gap: 8rpx; }
+
+.star { font-size: 44rpx; color: #ddd; }
+
+.star.on { color: #ffb400; }
+
+.content { width: 100%; box-sizing: border-box; min-height: 160rpx; background: #f8f8f8; border-radius: 12rpx; padding: 20rpx; font-size: 26rpx; margin-top: 16rpx; }
+
+.submit-wrap { padding: 30rpx 24rpx 60rpx; }
+
+.btn-primary { background: #00b578; color: #fff; font-size: 30rpx; border-radius: 44rpx; }

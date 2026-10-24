@@ -1,0 +1,114 @@
+<view class="page">
+  <view class="tabs">
+    <view class="tab {{tab === 'hours' ? 'tab-active' : ''}}" bindtap="onTab" data-tab="hours">我的课时</view>
+    <view class="tab {{tab === 'training' ? 'tab-active' : ''}}" bindtap="onTab" data-tab="training">
+      训练跟踪<view class="badge" wx:if="{{pending.length}}">{{pending.length}}</view>
+    </view>
+  </view>
+
+  <!-- 我的课时 -->
+  <block wx:if="{{tab === 'hours'}}">
+    <view class="pkg" wx:for="{{list}}" wx:key="id">
+      <view class="pkg-main" bindtap="onPkg" data-id="{{item.id}}">
+        <view class="pkg-head">
+          <view class="pkg-title">{{item.packageTitle}}</view>
+          <view class="pkg-status st-{{item.status}}">{{item.statusText}}</view>
+        </view>
+        <view class="nums">
+          <view class="num">
+            <view class="num-v">{{item.remaining}}</view>
+            <view class="num-l">剩余课时</view>
+          </view>
+          <view class="num">
+            <view class="num-v">{{item.usedSessions}}</view>
+            <view class="num-l">已消耗</view>
+          </view>
+          <view class="num">
+            <view class="num-v">{{item.totalSessions}}</view>
+            <view class="num-l">总课时</view>
+          </view>
+          <view class="num">
+            <view class="num-v num-s">{{item.expireText}}</view>
+            <view class="num-l">有效期至</view>
+          </view>
+        </view>
+        <view class="bar"><view class="bar-in" style="width: {{item.percent}}%"></view></view>
+      </view>
+      <view class="txns" wx:if="{{current === item.id}}">
+        <view class="txn" wx:for="{{txns}}" wx:for-item="t" wx:key="id">
+          <view class="txn-l">
+            <view class="txn-type">{{t.type}}</view>
+            <view class="txn-time">{{t.timeText}} {{t.remark}}</view>
+          </view>
+          <view class="txn-v {{t.sessionsChange > 0 ? 'pos' : 'neg'}}">{{t.sign}}{{t.sessionsChange}}</view>
+        </view>
+        <view class="txn-empty" wx:if="{{!txns.length}}">暂无流水</view>
+      </view>
+    </view>
+
+    <view class="empty" wx:if="{{!list.length}}">
+      <view>还没有课包</view>
+      <button class="go-buy" size="mini" bindtap="goBuy">去逛逛</button>
+    </view>
+  </block>
+
+  <!-- 训练跟踪 -->
+  <block wx:if="{{tab === 'training'}}">
+    <view class="stat-grid" wx:if="{{stats}}">
+      <view class="stat">
+        <view class="v">{{stats.week.lessons}}</view>
+        <view class="l">本周上课</view>
+      </view>
+      <view class="stat">
+        <view class="v">{{stats.week.minutes}}</view>
+        <view class="l">本周分钟</view>
+      </view>
+      <view class="stat">
+        <view class="v">{{stats.month.lessons}}</view>
+        <view class="l">本月上课</view>
+      </view>
+      <view class="stat">
+        <view class="v">{{stats.month.minutes}}</view>
+        <view class="l">本月分钟</view>
+      </view>
+    </view>
+
+    <view class="pkg">
+      <view class="sec-title">训练日历（{{month}}）</view>
+      <view class="week-row">
+        <view class="wd" wx:for="{{['日','一','二','三','四','五','六']}}" wx:key="*this">{{item}}</view>
+      </view>
+      <view class="cal">
+        <view class="cell {{item.blank ? 'blank' : ''}}" wx:for="{{calendar}}" wx:key="index">
+          <block wx:if="{{!item.blank}}">
+            <view class="d {{item.today ? 'today' : ''}}">{{item.day}}</view>
+            <view class="dot" wx:if="{{item.count}}"></view>
+          </block>
+        </view>
+      </view>
+    </view>
+
+    <view class="pkg" wx:if="{{pending.length}}">
+      <view class="sec-title">待评价（{{pending.length}}）</view>
+      <view class="pend" wx:for="{{pending}}" wx:key="verificationId" bindtap="goReview">
+        <view class="pend-l">
+          <view class="pend-name">{{item.projectName}}</view>
+          <view class="pend-sub">{{item.coachName}} · {{item.dateText}}</view>
+        </view>
+        <view class="pend-go">去评价 ›</view>
+      </view>
+    </view>
+
+    <view class="pkg">
+      <view class="sec-title">训练记录</view>
+      <view class="rec" wx:for="{{records}}" wx:key="id">
+        <view class="rec-l">
+          <view class="rec-t">{{item.project}}</view>
+          <view class="rec-s">{{item.recordDate}} · {{item.sourceText}}</view>
+        </view>
+        <view class="rec-r">{{item.durationMinutes}} 分钟</view>
+      </view>
+      <view class="txn-empty" wx:if="{{!records.length}}">完成上课后自动生成记录</view>
+    </view>
+  </block>
+</view>

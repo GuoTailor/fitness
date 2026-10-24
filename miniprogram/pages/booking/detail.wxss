@@ -1,0 +1,10 @@
+.page { padding: 24rpx; }
+.card { background: #fff; border-radius: 16rpx; padding: 40rpx 32rpx; text-align: center; }
+.title { font-size: 32rpx; font-weight: 600; }
+.time { font-size: 26rpx; color: #999; margin-top: 10rpx; }
+.code-box { margin-top: 32rpx; }
+.code { font-size: 48rpx; font-weight: 700; letter-spacing: 4rpx; color: #00b578; }
+.tip { font-size: 22rpx; color: #bbb; margin-top: 16rpx; }
+.copy-btn { margin-top: 24rpx; background: #f0faf6; color: #00b578; border-radius: 30rpx; }
+.review-tip { font-size: 24rpx; color: #666; }
+.review-btn { margin-top: 20rpx; background: #ffb400; color: #fff; border-radius: 40rpx; font-size: 28rpx; }

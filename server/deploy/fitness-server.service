@@ -1,0 +1,23 @@
+# systemd 单元：/etc/systemd/system/fitness-server.service
+# 启用：systemctl daemon-reload && systemctl enable --now fitness-server
+[Unit]
+Description=fitness-server (健身课包小程序后端)
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=fitness
+WorkingDirectory=/opt/fitness
+ExecStart=/opt/fitness/fitness-server -config /opt/fitness/configs/config.yaml
+Restart=always
+RestartSec=3
+# 敏感配置经环境变量注入（不落盘到 unit）
+EnvironmentFile=/opt/fitness/configs/env
+LimitNOFILE=65536
+# 加固
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/fitness/logs
+
+[Install]
+WantedBy=multi-user.target

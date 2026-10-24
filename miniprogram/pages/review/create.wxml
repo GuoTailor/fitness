@@ -1,0 +1,52 @@
+<view class="page">
+  <!-- 选择待评价课程 -->
+  <block wx:if="{{!current}}">
+    <view class="card">
+      <view class="section-title">待评价课程（{{pending.length}}）</view>
+      <view class="pend-item" wx:for="{{pending}}" wx:key="verificationId"
+            bindtap="onPick" data-index="{{index}}">
+        <view class="pend-l">
+          <view class="pend-name">{{item.projectName}}</view>
+          <view class="pend-sub">{{item.coachName}} · {{item.typeText}} · {{item.dateText}}</view>
+        </view>
+        <view class="pend-go">去评价 ›</view>
+      </view>
+      <view class="empty-inline" wx:if="{{!pending.length}}">暂无待评价课程，完成上课后可评价</view>
+    </view>
+  </block>
+
+  <!-- 评价表单 -->
+  <block wx:if="{{current}}">
+    <view class="card">
+      <view class="cur-name">{{current.projectName}}</view>
+      <view class="cur-sub">{{current.coachName}} · {{current.typeText === 'group' ? '团课' : '私教'}} · {{current.dateText}}</view>
+    </view>
+
+    <view class="card">
+      <view class="rate-row">
+        <view class="rate-label">课程体验</view>
+        <view class="stars">
+          <text wx:for="{{[1,2,3,4,5]}}" wx:key="*this"
+                class="star {{pkgStars >= item ? 'on' : ''}}"
+                bindtap="setStars" data-field="pkgStars" data-val="{{item}}">★</text>
+        </view>
+      </view>
+      <view class="rate-row">
+        <view class="rate-label">教练服务</view>
+        <view class="stars">
+          <text wx:for="{{[1,2,3,4,5]}}" wx:key="*this"
+                class="star {{coachStars >= item ? 'on' : ''}}"
+                bindtap="setStars" data-field="coachStars" data-val="{{item}}">★</text>
+        </view>
+      </view>
+      <textarea class="content" placeholder="说说上课感受，帮助更多小伙伴（选填）"
+                maxlength="500" value="{{content}}" bindinput="onInput" />
+    </view>
+
+    <view class="submit-wrap">
+      <button class="btn-primary" disabled="{{submitting}}" bindtap="onSubmit">
+        {{submitting ? '提交中…' : '提交评价'}}
+      </button>
+    </view>
+  </block>
+</view>

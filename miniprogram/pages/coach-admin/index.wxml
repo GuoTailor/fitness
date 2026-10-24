@@ -1,0 +1,29 @@
+<view class="page">
+  <view class="stats" wx:if="{{stats}}">
+    <view class="stat"><view class="v">{{stats.monthLessons}}</view><view class="l">本月课时</view></view>
+    <view class="stat"><view class="v">{{stats.monthStudents}}</view><view class="l">本月学员</view></view>
+    <view class="stat"><view class="v">{{stats.ratingAvg || '—'}}</view><view class="l">评分({{stats.ratingCount}})</view></view>
+  </view>
+
+  <view class="actions">
+    <button class="act" bindtap="goVerify">扫码核销</button>
+    <button class="act" bindtap="goSchedule">可约时段</button>
+    <button class="act" bindtap="goGroups">团课管理</button>
+    <button class="act" bindtap="goReviews">学员评价</button>
+  </view>
+
+  <view class="card">
+    <view class="section-title">今日课表（{{date}}）</view>
+    <view class="bk" wx:for="{{day}}" wx:key="booking.id">
+      <view class="bk-l">
+        <view class="bk-t">{{item.startLabel}} {{item.userName || '学员'}}</view>
+        <view class="bk-s s-{{item.booking.status}}">{{item.booking.status === 'pending' ? '待确认' : item.booking.status === 'confirmed' ? '已确认' : '已完成'}}</view>
+      </view>
+      <view class="bk-r" wx:if="{{item.booking.status === 'pending'}}">
+        <button size="mini" class="mini main" catchtap="onConfirm" data-id="{{item.booking.id}}">确认</button>
+        <button size="mini" class="mini" catchtap="onReject" data-id="{{item.booking.id}}">拒绝</button>
+      </view>
+    </view>
+    <view class="empty-inline" wx:if="{{!day.length}}">今天暂无私教预约</view>
+  </view>
+</view>

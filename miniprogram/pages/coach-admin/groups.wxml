@@ -1,0 +1,36 @@
+<view class="page">
+  <button class="pub-btn" bindtap="openForm">+ 发布团课</button>
+
+  <view class="gc" wx:for="{{list}}" wx:key="id">
+    <view class="gc-main">
+      <view class="gc-title">{{item.title}}</view>
+      <view class="gc-sub">{{item.timeText}} · {{item.location}} · {{item.enrolledCount}}/{{item.capacity}} · {{item.status}}</view>
+    </view>
+    <view class="gc-ops">
+      <text class="op" bindtap="onEnrollments" data-id="{{item.id}}">名单</text>
+      <text class="op op-danger" wx:if="{{item.status === 'enrolling' || item.status === 'fulfilled'}}"
+        bindtap="onCancel" data-id="{{item.id}}">取消</text>
+    </view>
+  </view>
+  <view class="empty" wx:if="{{!list.length}}">暂未发布团课</view>
+
+  <view class="mask" wx:if="{{showForm}}" bindtap="closeForm">
+    <view class="form" catchtap="">
+      <view class="f-title">发布团课</view>
+      <picker range="{{pkgs}}" range-key="title" bindchange="onPkg">
+        <view class="f-row">课包：{{pkgs.length ? (pkgs.find(p => p.id === form.packageId) || {}).title || '请选择' : '无可售课包'}}</view>
+      </picker>
+      <input class="f-input" placeholder="团课标题（如：燃脂训练营）" value="{{form.title}}" bindinput="onInput" data-field="title" />
+      <view class="f-row-2">
+        <picker mode="date" value="{{form.date}}" bindchange="onInput" data-field="date">
+          <view class="f-input">{{form.date}}</view>
+        </picker>
+        <picker mode="time" value="{{form.s}}" bindchange="onTime" data-field="s"><view class="f-input">{{form.s}}</view></picker>
+        <picker mode="time" value="{{form.e}}" bindchange="onTime" data-field="e"><view class="f-input">{{form.e}}</view></picker>
+      </view>
+      <input class="f-input" placeholder="地点（如：1 号团课厅）" value="{{form.location}}" bindinput="onInput" data-field="location" />
+      <input class="f-input" type="number" placeholder="容量" value="{{form.capacity}}" bindinput="onInput" data-field="capacity" />
+      <button class="f-submit" bindtap="onPublish">发布</button>
+    </view>
+  </view>
+</view>

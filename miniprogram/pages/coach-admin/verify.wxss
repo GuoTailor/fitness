@@ -1,0 +1,14 @@
+.page { padding: 24rpx; }
+.scan-btn { background: #00b578; color: #fff; border-radius: 44rpx; height: 96rpx; line-height: 96rpx; font-size: 32rpx; margin-bottom: 24rpx; }
+.card { background: #fff; border-radius: 14rpx; padding: 24rpx; margin-bottom: 24rpx; }
+.tip { font-size: 24rpx; color: #999; margin-bottom: 16rpx; }
+.row { display: flex; gap: 12rpx; align-items: center; }
+.input { flex: 1; background: #f6f7f9; border-radius: 10rpx; padding: 14rpx 20rpx; font-size: 26rpx; }
+.go { background: #00b578; color: #fff; border-radius: 24rpx; }
+.result { border-radius: 14rpx; padding: 28rpx; }
+.ok { background: #f0faf6; }
+.bad { background: #fdf2f2; }
+.r-title { font-size: 30rpx; font-weight: 600; }
+.ok .r-title { color: #00b578; }
+.bad .r-title { color: #e64340; }
+.r-line { font-size: 26rpx; color: #555; margin-top: 10rpx; }

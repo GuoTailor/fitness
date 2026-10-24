@@ -1,0 +1,17 @@
+<view class="page">
+  <view class="count">共 {{total}} 条评价</view>
+  <view class="card" wx:for="{{items}}" wx:key="id">
+    <view class="head">
+      <view class="nick">{{item.nickname}}</view>
+      <view class="stars">
+        <text wx:for="{{item.starsArr}}" wx:for-item="s" wx:key="*this" class="star {{s ? 'on' : ''}}">★</text>
+      </view>
+    </view>
+    <view class="featured" wx:if="{{item.featured}}">精选</view>
+    <view class="content" wx:if="{{item.content}}">{{item.content}}</view>
+    <view class="reply" wx:if="{{item.coachReply}}">教练回复：{{item.coachReply}}</view>
+    <view class="time">{{item.timeText}}</view>
+  </view>
+  <view class="empty" wx:if="{{!items.length && !loading}}">暂无评价</view>
+  <view class="loading" wx:if="{{loading}}">加载中…</view>
+</view>

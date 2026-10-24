@@ -1,0 +1,23 @@
+<view class="page">
+  <view class="tip">每周可约模板：学员只能在窗口内预约，每节课 60 分钟、30 分钟粒度起约</view>
+  <view class="day" wx:for="{{items}}" wx:key="weekday" wx:for-item="day">
+    <view class="day-head">
+      <text class="day-name">{{day.label}}</text>
+      <text class="add" bindtap="addWindow" data-wd="{{day.weekday}}">+ 时段</text>
+    </view>
+    <view class="win" wx:for="{{day.windows}}" wx:key="index" wx:for-item="w" wx:for-index="idx">
+      <picker mode="time" value="{{w.s}}" bindchange="onTime" data-wd="{{day.weekday}}" data-idx="{{idx}}" data-field="s">
+        <view class="t">{{w.s}}</view>
+      </picker>
+      <text class="sep">至</text>
+      <picker mode="time" value="{{w.e}}" bindchange="onTime" data-wd="{{day.weekday}}" data-idx="{{idx}}" data-field="e">
+        <view class="t">{{w.e}}</view>
+      </picker>
+      <text class="del" bindtap="removeWindow" data-wd="{{day.weekday}}" data-idx="{{idx}}">删除</text>
+    </view>
+  </view>
+  <view class="footer-bar-space"></view>
+  <view class="footer-bar">
+    <button class="save-btn" disabled="{{saving}}" bindtap="onSave">{{saving ? '保存中…' : '保存模板'}}</button>
+  </view>
+</view>

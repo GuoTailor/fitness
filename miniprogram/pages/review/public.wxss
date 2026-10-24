@@ -1,0 +1,23 @@
+.count { font-size: 24rpx; color: #999; margin: 20rpx 32rpx 0; }
+
+.card { background: #fff; border-radius: 16rpx; margin: 20rpx 24rpx; padding: 28rpx 24rpx; position: relative; }
+
+.head { display: flex; justify-content: space-between; align-items: center; }
+
+.nick { font-size: 26rpx; font-weight: 500; }
+
+.star { font-size: 26rpx; color: #ddd; }
+
+.star.on { color: #ffb400; }
+
+.featured { position: absolute; right: 24rpx; top: 60rpx; font-size: 20rpx; color: #ff9c00; border: 1rpx solid #ff9c00; border-radius: 6rpx; padding: 2rpx 10rpx; }
+
+.content { font-size: 26rpx; color: #333; margin-top: 12rpx; line-height: 1.6; }
+
+.reply { font-size: 24rpx; color: #555; background: #f8f8f8; border-radius: 10rpx; padding: 14rpx; margin-top: 12rpx; }
+
+.time { font-size: 22rpx; color: #bbb; margin-top: 12rpx; }
+
+.empty { text-align: center; color: #999; font-size: 26rpx; padding: 120rpx 0; }
+
+.loading { text-align: center; color: #bbb; font-size: 24rpx; padding: 24rpx 0 60rpx; }

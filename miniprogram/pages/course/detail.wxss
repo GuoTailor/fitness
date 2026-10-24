@@ -1,0 +1,73 @@
+.page { padding-bottom: 40rpx; }
+
+.video { width: 100%; height: 420rpx; background: #000; }
+
+.cover { background: #f0f0f0; }
+
+.card { background: #fff; border-radius: 16rpx; margin: 20rpx 24rpx; padding: 28rpx 24rpx; }
+
+.title { font-size: 36rpx; font-weight: 600; }
+
+.meta { display: flex; flex-wrap: wrap; gap: 12rpx; align-items: center; margin-top: 16rpx; }
+
+.tag { font-size: 22rpx; color: #00b578; background: #e8f6f0; padding: 4rpx 16rpx; border-radius: 8rpx; }
+
+.difficulty { font-size: 22rpx; color: #999; }
+
+.rating { font-size: 22rpx; color: #ffb400; }
+
+.section-title { font-size: 30rpx; font-weight: 600; margin-bottom: 16rpx; }
+
+.sku-list { display: flex; flex-wrap: wrap; gap: 16rpx; }
+
+.sku { border: 2rpx solid #eee; border-radius: 12rpx; padding: 16rpx 24rpx; min-width: 200rpx; }
+
+.sku-active { border-color: #00b578; background: #f0faf6; }
+
+.sku-name { font-size: 28rpx; font-weight: 500; }
+
+.sku-sub { font-size: 22rpx; color: #999; margin: 8rpx 0; }
+
+.sku-price { color: #e64340; font-weight: 600; }
+
+.rich { font-size: 26rpx; color: #555; line-height: 1.7; white-space: pre-wrap; }
+
+.coach-row { display: flex; align-items: center; padding: 16rpx 0; }
+
+.coach-avatar { width: 88rpx; height: 88rpx; border-radius: 50%; background: #f0f0f0; }
+
+.coach-info { margin-left: 20rpx; }
+
+.coach-name { font-size: 28rpx; font-weight: 500; }
+
+.cert { font-size: 20rpx; color: #4a90ff; background: #eef4ff; padding: 2rpx 10rpx; border-radius: 6rpx; margin-left: 8rpx; }
+
+.coach-sub { font-size: 22rpx; color: #999; margin-top: 6rpx; }
+
+.tabs { display: flex; gap: 32rpx; border-bottom: 1rpx solid #f0f0f0; margin-bottom: 16rpx; }
+
+.tab { font-size: 28rpx; color: #666; padding-bottom: 12rpx; }
+
+.tab-active { color: #00b578; font-weight: 600; border-bottom: 4rpx solid #00b578; }
+
+.review { padding: 16rpx 0; border-bottom: 1rpx solid #f6f6f6; }
+
+.review-head { display: flex; justify-content: space-between; }
+
+.review-stars { color: #ffb400; font-size: 24rpx; }
+
+.review-time { font-size: 22rpx; color: #bbb; }
+
+.review-content { font-size: 26rpx; margin-top: 8rpx; line-height: 1.6; }
+
+.review-reply { margin-top: 12rpx; background: #f8f9fa; border-radius: 8rpx; padding: 12rpx 16rpx; font-size: 24rpx; color: #666; }
+
+.empty-inline { color: #bbb; font-size: 24rpx; text-align: center; padding: 24rpx 0; }
+
+.footer-bar-space { height: 140rpx; }
+
+.footer-bar { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; padding: 16rpx 24rpx calc(16rpx + env(safe-area-inset-bottom)); box-shadow: 0 -4rpx 16rpx rgba(0,0,0,0.04); }
+
+.buy-btn { background: linear-gradient(135deg, #00b578, #009a66); color: #fff; border-radius: 44rpx; font-size: 30rpx; }
+
+.buy-btn.disabled { background: #c4c9cd; }

@@ -1,0 +1,19 @@
+.page { padding: 24rpx; }
+.stats { display: flex; background: #fff; border-radius: 16rpx; padding: 28rpx 0; margin-bottom: 20rpx; }
+.stat { flex: 1; text-align: center; }
+.v { font-size: 36rpx; font-weight: 700; }
+.l { font-size: 22rpx; color: #999; margin-top: 6rpx; }
+.actions { display: flex; gap: 16rpx; margin-bottom: 20rpx; }
+.act { flex: 1; background: #001529; color: #fff; border-radius: 14rpx; font-size: 26rpx; }
+.card { background: #fff; border-radius: 16rpx; padding: 28rpx 24rpx; }
+.section-title { font-size: 30rpx; font-weight: 600; margin-bottom: 16rpx; }
+.bk { display: flex; justify-content: space-between; align-items: center; padding: 20rpx 0; border-bottom: 1rpx solid #f6f6f6; }
+.bk-t { font-size: 28rpx; }
+.bk-s { font-size: 22rpx; margin-top: 6rpx; }
+.s-pending { color: #e6a23c; }
+.s-confirmed { color: #00b578; }
+.s-completed { color: #999; }
+.bk-r { display: flex; gap: 10rpx; }
+.mini { border: 2rpx solid #ddd; border-radius: 24rpx; color: #666; }
+.mini.main { border-color: #00b578; color: #00b578; background: #f0faf6; }
+.empty-inline { color: #bbb; font-size: 24rpx; text-align: center; padding: 24rpx 0; }

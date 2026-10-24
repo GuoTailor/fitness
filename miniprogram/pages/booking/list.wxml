@@ -1,0 +1,14 @@
+<view class="page">
+  <view class="item" wx:for="{{list}}" wx:key="id" bindtap="onDetail" data-id="{{item.id}}">
+    <view class="row1">
+      <text class="time">{{item.timeText}}</text>
+      <text class="status" style="color:{{item.statusColor}}">{{item.statusText}}</text>
+    </view>
+    <view class="row2">
+      <text>私教课</text>
+      <text class="op" wx:if="{{item.status === 'pending' || item.status === 'confirmed'}}" catchtap="onCancel" data-id="{{item.id}}">取消</text>
+      <text class="op op-go" wx:if="{{item.status === 'pending' || item.status === 'confirmed'}}">出示核销码 ›</text>
+    </view>
+  </view>
+  <view class="empty" wx:if="{{!list.length}}">暂无预约</view>
+</view>

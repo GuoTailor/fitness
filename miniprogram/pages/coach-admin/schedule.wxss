@@ -1,0 +1,13 @@
+.page { padding: 24rpx; }
+.tip { font-size: 22rpx; color: #999; margin-bottom: 20rpx; }
+.day { background: #fff; border-radius: 14rpx; padding: 20rpx 24rpx; margin-bottom: 16rpx; }
+.day-head { display: flex; justify-content: space-between; }
+.day-name { font-size: 28rpx; font-weight: 600; }
+.add { color: #00b578; font-size: 24rpx; }
+.win { display: flex; align-items: center; gap: 16rpx; margin-top: 16rpx; }
+.t { background: #f6f7f9; border-radius: 8rpx; padding: 8rpx 20rpx; font-size: 26rpx; }
+.sep { color: #999; font-size: 24rpx; }
+.del { color: #e64340; font-size: 24rpx; margin-left: auto; }
+.footer-bar-space { height: 130rpx; }
+.footer-bar { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; padding: 16rpx 24rpx calc(16rpx + env(safe-area-inset-bottom)); }
+.save-btn { background: #00b578; color: #fff; border-radius: 44rpx; }

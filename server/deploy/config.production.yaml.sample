@@ -1,0 +1,45 @@
+# 生产配置样例：复制到 /opt/fitness/configs/config.yaml 后逐项填写
+# 敏感项（数据库密码、JWT secret、商户私钥路径）建议走环境变量：
+#   DB_PASSWORD / JWT_SECRET （见 deploy/fitness-server.service 的 EnvironmentFile）
+server:
+  port: 8080
+  base_url: https://your-domain.com   # 拼支付回调地址用
+  mode: release
+
+db:
+  host: 127.0.0.1
+  port: 3306
+  username: fitness
+  database: fitness
+  params: charset=utf8mb4&parseTime=True&loc=Local
+
+jwt:
+  expire_hours: 720   # 30 天
+
+wechat:
+  mock: false
+  appid: wxXXXXXXXXXXXXXXXX
+  secret: <小程序密钥>
+
+pay:
+  mock: false
+  mch_id: "<商户号>"
+  mch_serial_no: "<商户 API 证书序列号>"
+  apiv3_key: "<APIv3 密钥>"
+  private_key_path: /opt/fitness/secrets/apiclient_key.pem
+  notify_url: https://your-domain.com/api/v1/pay/notify
+  refund_notify_url: https://your-domain.com/api/v1/pay/refund/notify
+
+notify:
+  mock: false
+  templates:
+    booking_confirmed: "<模板ID：预约确认/报名结果>"
+    booking_new: "<模板ID：新预约通知教练>"
+    review_invite: "<模板ID：评价邀请>"
+    sessions_warning: "<模板ID：课时不足>"
+    expire_warning: "<模板ID：有效期预警>"
+
+video:
+  base_url: https://your-domain.com/videos
+
+owner_id: 1

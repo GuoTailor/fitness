@@ -1,0 +1,59 @@
+<view class="page">
+  <swiper wx:if="{{banners.length}}" class="banner" indicator-dots autoplay circular>
+    <swiper-item wx:for="{{banners}}" wx:key="id" bindtap="onBannerTap"
+      data-type="{{item.linkType}}" data-value="{{item.linkValue}}">
+      <image class="banner-img" src="{{item.imageUrl}}" mode="aspectFill" />
+    </swiper-item>
+  </swiper>
+
+  <view class="entries">
+    <view class="entry" bindtap="goCourses">
+      <view class="entry-icon icon-pkg">课</view>
+      <text>课包商城</text>
+    </view>
+    <view class="entry" bindtap="goCalendar">
+      <view class="entry-icon icon-train">团</view>
+      <text>团课课表</text>
+    </view>
+    <view class="entry" bindtap="goCoaches">
+      <view class="entry-icon icon-coach">练</view>
+      <text>找教练</text>
+    </view>
+    <navigator class="entry" url="/pages/booking/list">
+      <view class="entry-icon icon-book">约</view>
+      <text>我的预约</text>
+    </navigator>
+  </view>
+
+  <view class="section">
+    <view class="section-title">热销课包</view>
+    <view class="pkg-grid">
+      <view class="pkg-card" wx:for="{{hotPackages}}" wx:key="id" bindtap="onPkgTap" data-id="{{item.id}}">
+        <image class="pkg-cover" src="{{item.coverUrl}}" mode="aspectFill" />
+        <view class="pkg-name">{{item.title}}</view>
+        <view class="pkg-meta">
+          <text class="pkg-price">¥{{item.minPrice / 100}}</text>
+          <text class="pkg-sold">已售{{item.soldCount}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">明星教练</view>
+    <scroll-view scroll-x class="coach-scroll">
+      <view class="coach-card" wx:for="{{coaches}}" wx:key="id" bindtap="onCoachTap" data-id="{{item.id}}">
+        <image class="coach-avatar" src="{{item.avatarUrl || '/assets/avatar-default.png'}}" mode="aspectFill" />
+        <view class="coach-name">{{item.name}}</view>
+        <view class="coach-sub">{{item.specialties}}</view>
+      </view>
+    </scroll-view>
+  </view>
+
+  <!-- 开发联调：后端 wechat.mock=true 时可用固定身份登录 -->
+  <view class="card dev" wx:if="{{!user}}">
+    <view class="dev-title">开发：指定 mock 身份登录</view>
+    <input class="dev-input" placeholder="如 mock-user-1 / mock-coach-1" value="{{devCode}}" bindinput="onDevInput" />
+    <button class="btn-ghost" bindtap="onDevLogin">切换身份</button>
+  </view>
+</view>

@@ -57,3 +57,15 @@ export const grantCoupon = (id, userId) => http.post(`/admin/api/v1/coupons/${id
 
 // 金额（分）→ 元
 export const yuan = (cents) => (cents == null ? '—' : (cents / 100).toFixed(2))
+
+// 老带新邀请记录
+export const listReferrals = (params) => http.get('/admin/api/v1/referrals', { params })
+
+// 拼团管理
+export const listGroupBuys = (params) => http.get('/admin/api/v1/group-buys', { params })
+
+// 教练入驻审核
+export const listCoachApplications = (params) => http.get('/admin/api/v1/coach-applications', { params })
+export const approveCoachApplication = (id) => http.post(`/admin/api/v1/coach-applications/${id}/approve`, {})
+export const rejectCoachApplication = (id, reason) => http.post(`/admin/api/v1/coach-applications/${id}/reject`, { reason })
+export const adminLogout = () => http.post('/admin/api/v1/auth/logout', {})

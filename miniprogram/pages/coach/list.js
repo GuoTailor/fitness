@@ -34,4 +34,5 @@ Page({
   },
 
   onCoach(e) { wx.navigateTo({ url: '/pages/coach/detail?id=' + e.currentTarget.dataset.id }) },
+  goApply() { wx.navigateTo({ url: '/pages/coach/apply' }) },
 })

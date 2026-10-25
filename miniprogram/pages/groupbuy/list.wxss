@@ -1,0 +1,17 @@
+.page { padding: 24rpx; }
+.head { padding: 28rpx; }
+.title { font-size: 32rpx; font-weight: 600; }
+.price-row { display: flex; align-items: baseline; gap: 16rpx; margin: 18rpx 0; flex-wrap: wrap; }
+.gp { color: #e64340; font-size: 36rpx; font-weight: 700; }
+.op { color: #999; font-size: 24rpx; text-decoration: line-through; }
+.cap { color: #666; font-size: 24rpx; }
+.open-btn { background: #e64340; color: #fff; }
+.open-btn::after { border: none; }
+.sec-title { font-size: 28rpx; font-weight: 600; margin: 28rpx 8rpx 16rpx; }
+.gcard { display: flex; align-items: center; justify-content: space-between; padding: 26rpx 28rpx; margin-bottom: 18rpx; }
+.g-leader { font-size: 28rpx; }
+.g-progress { font-size: 24rpx; color: #00B578; margin-top: 8rpx; }
+.g-side { text-align: right; }
+.g-price { color: #e64340; font-weight: 700; }
+.g-end { font-size: 20rpx; color: #999; margin-top: 6rpx; }
+.empty { text-align: center; color: #999; font-size: 26rpx; padding: 60rpx 0; }

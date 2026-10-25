@@ -18,4 +18,5 @@
     </view>
   </view>
   <view class="empty" wx:if="{{!loading && !list.length}}">暂无教练</view>
+  <view class="apply-entry" bindtap="goApply">我是教练，申请入驻 ›</view>
 </view>

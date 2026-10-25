@@ -1,17 +1,22 @@
 // Package migrate 提供极简 SQL 迁移：读取 migrations 包内嵌的 *.sql，
 // 按文件名版本号顺序执行，已完成记录在 schema_migrations 表。
-// MySQL DDL 隐式提交无法整体回滚，脚本失败即停止并报出所在语句。
+// MySQL DDL 隐式提交无法整体回滚；半途失败的脚本重跑时以「对象已存在」类
+// 错误码容错续传（L12 幂等化），避免部分生效后卡死。
 package migrate
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
+	"log"
 	"sort"
 	"strconv"
 	"strings"
 
 	"gorm.io/gorm"
+
+	"github.com/go-sql-driver/mysql"
 )
 
 type migration struct {
@@ -77,6 +82,11 @@ func Up(ctx context.Context, db *gorm.DB, fsys fs.FS) (int, error) {
 		}
 		for _, stmt := range splitStatements(m.sql) {
 			if err := db.WithContext(ctx).Exec(stmt).Error; err != nil {
+				if isIdempotentDDLError(err) {
+					// 半途失败重跑：对象已生效（表/列/键已存在或删除目标不存在），继续
+					log.Printf("[migrate] %s 跳过已生效语句: %.60s", m.name, stmt)
+					continue
+				}
 				return count, fmt.Errorf("migration %s 失败（语句: %.80s…）: %w", m.name, stmt, err)
 			}
 		}
@@ -87,6 +97,21 @@ func Up(ctx context.Context, db *gorm.DB, fsys fs.FS) (int, error) {
 		count++
 	}
 	return count, nil
+}
+
+// isIdempotentDDLError 「DDL 已生效」类 MySQL 错误：重跑已部分执行的迁移脚本时安全续传。
+// 1050 表已存在 / 1060 列已存在 / 1061 键名已存在 / 1091 删除不存在的列或键。
+// 仅对 MySQL 生效（测试用 sqlite 不走本执行器）。
+func isIdempotentDDLError(err error) bool {
+	var merr *mysql.MySQLError
+	if !errors.As(err, &merr) {
+		return false
+	}
+	switch merr.Number {
+	case 1050, 1060, 1061, 1091:
+		return true
+	}
+	return false
 }
 
 // splitStatements 去掉 `--` 注释行后按分号切分；脚本约定不使用含分号的字符串字面量。

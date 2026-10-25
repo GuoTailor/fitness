@@ -5,7 +5,7 @@
 
 -- ============ 用户与角色 ============
 
-CREATE TABLE user (
+CREATE TABLE IF NOT EXISTS user (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   openid VARCHAR(64) NOT NULL DEFAULT '',
   unionid VARCHAR(64) NOT NULL DEFAULT '',
@@ -20,7 +20,7 @@ CREATE TABLE user (
   KEY idx_user_phone (phone)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='学员';
 
-CREATE TABLE coach (
+CREATE TABLE IF NOT EXISTS coach (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   owner_id BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '归属（平台化预留）',
   user_id BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '绑定登录账号，0=未绑定',
@@ -44,7 +44,7 @@ CREATE TABLE coach (
   KEY idx_coach_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='教练';
 
-CREATE TABLE admin_user (
+CREATE TABLE IF NOT EXISTS admin_user (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   username VARCHAR(64) NOT NULL,
   password_hash VARCHAR(100) NOT NULL,
@@ -59,7 +59,7 @@ CREATE TABLE admin_user (
 
 -- ============ 商城 ============
 
-CREATE TABLE course_package (
+CREATE TABLE IF NOT EXISTS course_package (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   owner_id BIGINT UNSIGNED NOT NULL DEFAULT 1,
   title VARCHAR(128) NOT NULL DEFAULT '',
@@ -79,7 +79,7 @@ CREATE TABLE course_package (
   KEY idx_pkg_owner (owner_id, status, category)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='课包';
 
-CREATE TABLE package_sku (
+CREATE TABLE IF NOT EXISTS package_sku (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   package_id BIGINT UNSIGNED NOT NULL,
   name VARCHAR(64) NOT NULL DEFAULT '' COMMENT '如：10次卡',
@@ -96,7 +96,7 @@ CREATE TABLE package_sku (
   KEY idx_sku_pkg (package_id, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='课包规格';
 
-CREATE TABLE coach_package (
+CREATE TABLE IF NOT EXISTS coach_package (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   coach_id BIGINT UNSIGNED NOT NULL,
   package_id BIGINT UNSIGNED NOT NULL,
@@ -105,7 +105,7 @@ CREATE TABLE coach_package (
   UNIQUE KEY uk_coach_pkg (coach_id, package_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='教练在售课包';
 
-CREATE TABLE banner (
+CREATE TABLE IF NOT EXISTS banner (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   owner_id BIGINT UNSIGNED NOT NULL DEFAULT 1,
   image_url VARCHAR(512) NOT NULL DEFAULT '',
@@ -121,7 +121,7 @@ CREATE TABLE banner (
 
 -- ============ 交易 ============
 
-CREATE TABLE orders (
+CREATE TABLE IF NOT EXISTS orders (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   order_no VARCHAR(32) NOT NULL,
   owner_id BIGINT UNSIGNED NOT NULL DEFAULT 1,
@@ -145,7 +145,7 @@ CREATE TABLE orders (
   KEY idx_order_pkg (package_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订单';
 
-CREATE TABLE payment (
+CREATE TABLE IF NOT EXISTS payment (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   order_id BIGINT UNSIGNED NOT NULL,
   transaction_id VARCHAR(64) NULL DEFAULT NULL COMMENT '微信支付单号：回调写入，唯一键 NULL 默认值允许多行待支付（防回调重放的 DB 级兜底）',
@@ -159,7 +159,7 @@ CREATE TABLE payment (
   UNIQUE KEY uk_payment_txn (transaction_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='支付流水';
 
-CREATE TABLE refund (
+CREATE TABLE IF NOT EXISTS refund (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   refund_no VARCHAR(32) NOT NULL,
   order_id BIGINT UNSIGNED NOT NULL,
@@ -178,7 +178,7 @@ CREATE TABLE refund (
 
 -- ============ 课时账户 ============
 
-CREATE TABLE member_package (
+CREATE TABLE IF NOT EXISTS member_package (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   owner_id BIGINT UNSIGNED NOT NULL DEFAULT 1,
   user_id BIGINT UNSIGNED NOT NULL,
@@ -198,7 +198,7 @@ CREATE TABLE member_package (
   KEY idx_mp_expire (status, expire_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='学员课包（课时账户）';
 
-CREATE TABLE package_transaction (
+CREATE TABLE IF NOT EXISTS package_transaction (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   member_package_id BIGINT UNSIGNED NOT NULL,
   user_id BIGINT UNSIGNED NOT NULL,
@@ -217,7 +217,7 @@ CREATE TABLE package_transaction (
 
 -- ============ 预约与团课 ============
 
-CREATE TABLE coach_schedule (
+CREATE TABLE IF NOT EXISTS coach_schedule (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   coach_id BIGINT UNSIGNED NOT NULL,
   weekday TINYINT NOT NULL COMMENT '0-6 周日-周六',
@@ -230,7 +230,7 @@ CREATE TABLE coach_schedule (
   UNIQUE KEY uk_schedule (coach_id, weekday, start_minute)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='教练每周可约时段模板';
 
-CREATE TABLE booking (
+CREATE TABLE IF NOT EXISTS booking (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   owner_id BIGINT UNSIGNED NOT NULL DEFAULT 1,
   user_id BIGINT UNSIGNED NOT NULL,
@@ -255,7 +255,7 @@ CREATE TABLE booking (
   KEY idx_booking_date (booking_date, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='私教预约';
 
-CREATE TABLE group_class (
+CREATE TABLE IF NOT EXISTS group_class (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   owner_id BIGINT UNSIGNED NOT NULL DEFAULT 1,
   coach_id BIGINT UNSIGNED NOT NULL,
@@ -277,7 +277,7 @@ CREATE TABLE group_class (
   KEY idx_gc_coach (coach_id, class_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='团课';
 
-CREATE TABLE group_enrollment (
+CREATE TABLE IF NOT EXISTS group_enrollment (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   group_class_id BIGINT UNSIGNED NOT NULL,
   user_id BIGINT UNSIGNED NOT NULL,
@@ -293,7 +293,7 @@ CREATE TABLE group_enrollment (
 
 -- ============ 核销与训练 ============
 
-CREATE TABLE verification (
+CREATE TABLE IF NOT EXISTS verification (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   biz_type VARCHAR(16) NOT NULL COMMENT 'private/group',
   booking_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
@@ -314,7 +314,7 @@ CREATE TABLE verification (
   KEY idx_verify_coach (coach_id, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='核销记录';
 
-CREATE TABLE training_record (
+CREATE TABLE IF NOT EXISTS training_record (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   user_id BIGINT UNSIGNED NOT NULL,
   coach_id BIGINT UNSIGNED NOT NULL,
@@ -331,7 +331,7 @@ CREATE TABLE training_record (
 
 -- ============ 评价 ============
 
-CREATE TABLE review (
+CREATE TABLE IF NOT EXISTS review (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   owner_id BIGINT UNSIGNED NOT NULL DEFAULT 1,
   user_id BIGINT UNSIGNED NOT NULL,
@@ -357,7 +357,7 @@ CREATE TABLE review (
 
 -- ============ 配置与消息 ============
 
-CREATE TABLE app_config (
+CREATE TABLE IF NOT EXISTS app_config (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   cfg_key VARCHAR(64) NOT NULL,
   cfg_value VARCHAR(512) NOT NULL DEFAULT '',
@@ -367,7 +367,7 @@ CREATE TABLE app_config (
   UNIQUE KEY uk_cfg_key (cfg_key)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='运营配置';
 
-CREATE TABLE notify_log (
+CREATE TABLE IF NOT EXISTS notify_log (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   user_id BIGINT UNSIGNED NOT NULL,
   scene VARCHAR(32) NOT NULL COMMENT 'booking_confirmed/review_invite/sessions_warning/expire_warning',

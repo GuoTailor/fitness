@@ -27,16 +27,19 @@ type Runner struct {
 	notify  *service.NotifyService
 	orders  *service.OrderService
 	coupons *service.CouponService
+	gbSvc   *service.GroupBuyService
 }
 
 func NewRunner(db *gorm.DB, mp wechat.MiniProgram, notifyCfg config.NotifyConfig, pay wechat.PaymentProvider) *Runner {
 	cfg := service.NewConfigService(db)
+	notify := service.NewNotifyService(db, mp, notifyCfg.Mock, notifyCfg.Templates)
 	return &Runner{
 		db:      db,
 		cfg:     cfg,
-		notify:  service.NewNotifyService(db, mp, notifyCfg.Mock, notifyCfg.Templates),
+		notify:  notify,
 		orders:  service.NewOrderService(db, cfg, pay),
 		coupons: service.NewCouponService(db),
+		gbSvc:   service.NewGroupBuyService(db, cfg).WithNotify(notify),
 	}
 }
 
@@ -81,6 +84,7 @@ func (r *Runner) RunOnce(ctx context.Context) {
 	run("预约过期", func() (int64, error) { return r.ExpireBookings(ctx) })
 	run("团课结课", func() (int64, error) { return r.FinishGroupClasses(ctx) })
 	run("优惠券过期", func() (int64, error) { return r.ExpireUserCoupons(ctx) })
+	run("拼团到期", func() (int64, error) { return r.CloseGroupBuys(ctx) })
 	run("退款轮询", func() (int64, error) {
 		n, err := r.orders.PollApprovedRefunds(ctx)
 		return int64(n), err
@@ -273,3 +277,72 @@ func (r *Runner) ExpireUserCoupons(ctx context.Context) (int64, error) {
 		Update("status", model.CouponExpired)
 	return res.RowsAffected, res.Error
 }
+
+// CloseGroupBuys 拼团到期：enrolling 且已过期 → 条件 UPDATE 置 failed（幂等闸门），
+// 对每个已支付订单走自动退款（复用退款审批链路：未消费全额退、已消费按剩余课时折算）；
+// 全部已支付成员收到未成团通知。
+func (r *Runner) CloseGroupBuys(ctx context.Context) (int64, error) {
+	now := time.Now()
+	var gbs []model.GroupBuy
+	if err := r.db.WithContext(ctx).
+		Where("status = ? AND expire_at <= ?", model.GroupBuyEnrolling, now).
+		Limit(50).Find(&gbs).Error; err != nil {
+		return 0, err
+	}
+	var failed int64
+	for _, gb := range gbs {
+		res := r.db.WithContext(ctx).Model(&model.GroupBuy{}).
+			Where("id = ? AND status = ?", gb.ID, model.GroupBuyEnrolling).
+			Update("status", model.GroupBuyFailed)
+		if res.Error != nil {
+			return failed, res.Error
+		}
+		if res.RowsAffected == 0 {
+			continue // 并发已处理
+		}
+		failed++
+		r.autoRefundGroup(ctx, &gb)
+	}
+	return failed, nil
+}
+
+// autoRefundGroup 未成团自动退款 + 成员通知（调用前团已置 failed）
+func (r *Runner) autoRefundGroup(ctx context.Context, gb *model.GroupBuy) {
+	var orders []model.Order
+	if err := r.db.WithContext(ctx).
+		Where("group_buy_id = ? AND status = ?", gb.ID, model.OrderStatusPaid).
+		Find(&orders).Error; err != nil {
+		log.Printf("[groupbuy] 查询待退款订单失败 gb=%d: %v", gb.ID, err)
+		return
+	}
+	for _, o := range orders {
+		refund, err := r.orders.CreateAutoRefund(ctx, o.ID, o.UserID, "拼团未成团，自动退款")
+		if err != nil {
+			log.Printf("[groupbuy] 建自动退款单失败 order=%d: %v", o.ID, err)
+			continue
+		}
+		// adminID=0 表示系统自动审批；mock 通道即时到终态，真实通道由轮询任务推进
+		if _, err := r.orders.ApproveRefund(ctx, refund.ID, 0); err != nil {
+			log.Printf("[groupbuy] 自动退款审批失败 order=%d refund=%s: %v", o.ID, refund.RefundNo, err)
+		}
+	}
+	// 通知所有已支付过的成员（uk 天然去重）
+	var members []model.GroupBuyMember
+	r.db.WithContext(ctx).Where("group_buy_id = ?", gb.ID).Find(&members)
+	for _, m := range members {
+		tryNotifyTask(ctx, r.notify, m.UserID, model.NotifySceneGroupBuyFail, gb.ID,
+			map[string]string{"thing1": "拼团未成团，已支付款项将自动原路退回", "date2": now2Date()})
+	}
+}
+
+// tryNotifyTask 通知失败仅记日志（task 包内转发，避免与 service.tryNotify 同名混淆）
+func tryNotifyTask(ctx context.Context, n *service.NotifyService, userID int64, scene string, bizID int64, data map[string]string) {
+	if n == nil {
+		return
+	}
+	if _, err := n.Send(ctx, userID, scene, bizID, data); err != nil {
+		log.Printf("[task] 通知发送失败 user=%d scene=%s: %v", userID, scene, err)
+	}
+}
+
+func now2Date() string { return time.Now().Format("2006-01-02") }

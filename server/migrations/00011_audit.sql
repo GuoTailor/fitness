@@ -1,7 +1,7 @@
 -- 00011: P1 合规收尾
 -- 后台操作审计日志（资金/敏感操作留痕，老板可查）
 
-CREATE TABLE admin_audit_log (
+CREATE TABLE IF NOT EXISTS admin_audit_log (
   id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   admin_id BIGINT NOT NULL DEFAULT 0,
   username VARCHAR(50) NOT NULL DEFAULT '',

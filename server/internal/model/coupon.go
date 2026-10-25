@@ -41,8 +41,8 @@ func (CouponTemplate) TableName() string { return "coupon_template" }
 type UserCoupon struct {
 	ID         int64      `gorm:"primaryKey;autoIncrement" json:"id"`
 	UserID     int64      `gorm:"index:idx_uc_user" json:"userId"`
-	TemplateID int64      `gorm:"index:idx_uc_tpl" json:"templateId"`
-	Status     string     `gorm:"size:16;default:usable;index:idx_uc_user" json:"status"`
+	TemplateID int64      `gorm:"index:idx_uc_tpl,priority:1" json:"templateId"`
+	Status     string     `gorm:"size:16;default:usable;index:idx_uc_user,priority:2;index:idx_uc_tpl,priority:2" json:"status"` // idx_uc_tpl=(template_id,status) 与迁移 SQL 对齐
 	OrderID    int64      `gorm:"default:0" json:"orderId"`
 	ExpireAt   *time.Time `json:"expireAt"`
 	UsedAt     *time.Time `json:"usedAt"`

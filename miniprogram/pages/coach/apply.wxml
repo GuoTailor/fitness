@@ -1,0 +1,58 @@
+<view class="page">
+  <!-- 已有申请：状态展示 -->
+  <view class="card" wx:if="{{mine}}">
+    <view class="sec-title">我的申请</view>
+    <view class="st-row">
+      <text class="st {{mine.status === 1 ? 'st-ok' : (mine.status === 2 ? 'st-bad' : '')}}">{{mine.statusText}}</text>
+      <text class="st-time">{{mine.createdText}}</text>
+    </view>
+    <view class="reason" wx:if="{{mine.status === 2 && mine.rejectReason}}">驳回原因：{{mine.rejectReason}}</view>
+    <view class="tip" wx:if="{{mine.status === 0}}">审核通常在 1~3 个工作日内完成，结果将通过消息通知</view>
+    <view class="tip" wx:if="{{mine.status === 1}}">恭喜！返回「我的」页即可进入教练工作台</view>
+  </view>
+
+  <!-- 可提交（无申请或已被驳回） -->
+  <view class="card" wx:if="{{!mine || mine.status === 2}}">
+    <view class="sec-title">教练入驻申请</view>
+    <view class="form-row">
+      <text class="label">姓名</text>
+      <input class="input" value="{{form.name}}" placeholder="真实姓名" data-key="name" bindinput="onInput" />
+    </view>
+    <view class="form-row">
+      <text class="label">性别</text>
+      <view class="gender">
+        <text class="g {{form.gender === 1 ? 'g-on' : ''}}" bindtap="onGender" data-v="1">男</text>
+        <text class="g {{form.gender === 2 ? 'g-on' : ''}}" bindtap="onGender" data-v="2">女</text>
+      </view>
+    </view>
+    <view class="form-row">
+      <text class="label">从业年限</text>
+      <input class="input" type="number" value="{{form.years}}" placeholder="如 5" data-key="years" bindinput="onInput" />
+    </view>
+    <view class="form-row">
+      <text class="label">擅长方向</text>
+      <input class="input" value="{{form.specialties}}" placeholder="逗号分隔，如 减脂,增肌,体态" data-key="specialties" bindinput="onInput" />
+    </view>
+    <view class="form-row">
+      <text class="label">联系方式</text>
+      <input class="input" value="{{form.phone}}" placeholder="手机号/微信（便于沟通）" data-key="phone" bindinput="onInput" />
+    </view>
+    <view class="form-row col">
+      <text class="label">资质证书（1~6 张）</text>
+      <view class="certs">
+        <view class="cert" wx:for="{{certImages}}" wx:key="*this">
+          <image src="{{item}}" mode="aspectFill" bindtap="onPreview" data-url="{{item}}" />
+          <view class="del" catchtap="onRemoveCert" data-index="{{index}}">×</view>
+        </view>
+        <view class="cert add" wx:if="{{certImages.length < 6}}" bindtap="onAddCert">
+          <text>{{uploading ? '上传中…' : '+ 添加'}}</text>
+        </view>
+      </view>
+    </view>
+    <view class="form-row col">
+      <text class="label">自我介绍</text>
+      <textarea class="ta" value="{{form.intro}}" maxlength="1000" placeholder="从业经历、教学风格、擅长人群等（选填）" data-key="intro" bindinput="onInput" />
+    </view>
+    <button class="submit" loading="{{submitting}}" bindtap="onSubmit">提交申请</button>
+  </view>
+</view>

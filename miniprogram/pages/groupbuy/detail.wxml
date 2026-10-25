@@ -1,0 +1,23 @@
+<view class="page" wx:if="{{gb}}">
+  <view class="card head">
+    <view class="title">{{gb.title}}</view>
+    <view class="st st-{{gb.status}}">{{gb.statusText || (gb.status === 2 ? '已成团' : (gb.status === 3 ? '未成团' : '报名中'))}}</view>
+    <view class="price-row">
+      <text class="gp">拼团价 ¥{{gb.priceYuan}}</text>
+      <text class="cap">{{gb.capacity}}人成团</text>
+    </view>
+    <view class="progress">
+      <view class="bar"><view class="fill" style="width: {{gb.paidCount * 100 / gb.capacity}}%"></view></view>
+      <view class="num">{{gb.paidCount}}/{{gb.capacity}} 人已上车</view>
+    </view>
+    <view class="end">{{gb.endText}} 截止 · 团长：{{gb.leaderName}}</view>
+
+    <button wx:if="{{gb.canJoin}}" class="btn join" loading="{{joining}}" bindtap="onJoin">
+      ¥{{gb.priceYuan}} 立即参团
+    </button>
+    <button wx:elif="{{gb.joined && !gb.myOrderPaid}}" class="btn warn" bindtap="onPayAgain">我的订单未支付，去支付</button>
+    <button wx:elif="{{gb.myOrderPaid}}" class="btn ok" open-type="share">已成团的好友，邀人拼团</button>
+    <button wx:else class="btn share" open-type="share">分享给好友，一起拼</button>
+    <view class="tip" wx:if="{{gb.status === 1}}">到期未成团，已支付款项将自动原路退回</view>
+  </view>
+</view>

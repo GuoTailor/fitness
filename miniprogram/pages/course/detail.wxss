@@ -127,3 +127,10 @@
 .qa-meta { font-size: 20rpx; color: #bbb; margin-top: 6rpx; }
 .qa-pin { flex-shrink: 0; font-size: 20rpx; color: #ff6600; border: 1rpx solid #ff6600; border-radius: 6rpx; padding: 0 8rpx; height: 36rpx; line-height: 36rpx; }
 .qa-none { margin-top: 12rpx; font-size: 22rpx; color: #bbb; }
+
+/* 拼团入口 */
+.gb-bar { display: flex; align-items: center; justify-content: space-between; margin-top: 20rpx; padding: 18rpx 20rpx; background: #fff5f4; border-radius: 12rpx; }
+.gb-price { color: #e64340; font-weight: 700; font-size: 30rpx; margin-right: 14rpx; }
+.gb-tip { font-size: 20rpx; color: #b98a86; }
+.gb-btn { background: #e64340; color: #fff; }
+.gb-btn::after { border: none; }

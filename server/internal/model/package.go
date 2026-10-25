@@ -44,8 +44,11 @@ type PackageSKU struct {
 	PromoPrice *int64     `json:"promoPrice"`
 	PromoStart *time.Time `json:"promoStart"`
 	PromoEnd   *time.Time `json:"promoEnd"`
-	Status     int8       `gorm:"default:1;index:idx_sku_pkg" json:"status"`
-	Sort       int        `json:"sort"`
+	// 拼团（P2）：GroupPrice>0 且 GroupCapacity 2~5 时开启；拼团价不与券/新人价/活动价叠加
+	GroupPrice    int64 `gorm:"default:0" json:"groupPrice"`
+	GroupCapacity int   `gorm:"default:0" json:"groupCapacity"`
+	Status        int8  `gorm:"default:1;index:idx_sku_pkg" json:"status"`
+	Sort          int   `json:"sort"`
 	CreatedAt  time.Time  `json:"createdAt"`
 	UpdatedAt  time.Time  `json:"updatedAt"`
 }

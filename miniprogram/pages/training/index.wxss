@@ -71,3 +71,17 @@
 .fb-coach { font-size: 26rpx; font-weight: 600; }
 .fb-meta { font-size: 22rpx; color: #999; }
 .fb-content { font-size: 26rpx; color: #444; line-height: 1.6; }
+
+/* 打卡挑战 */
+.ck-card { margin-top: 20rpx; }
+.ck-head { display: flex; align-items: center; justify-content: space-between; }
+.ck-badge { font-size: 22rpx; padding: 4rpx 16rpx; border-radius: 999rpx; background: #f0f1f3; color: #999; }
+.ck-badge.ready { background: #e6f7ef; color: #00B578; }
+.ck-badge.done { background: #f5f5f5; color: #bbb; }
+.ck-progress { display: flex; align-items: center; gap: 16rpx; margin-top: 16rpx; }
+.ck-bar { flex: 1; height: 14rpx; background: #f0f1f3; border-radius: 999rpx; overflow: hidden; }
+.ck-fill { height: 100%; background: linear-gradient(90deg, #00B578, #35d499); border-radius: 999rpx; }
+.ck-num { font-size: 24rpx; color: #666; }
+.ck-sub { font-size: 22rpx; color: #999; margin-top: 10rpx; }
+.ck-btn { margin-top: 14rpx; background: #00B578; color: #fff; }
+.ck-btn::after { border: none; }

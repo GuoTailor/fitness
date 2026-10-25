@@ -73,6 +73,22 @@
       </view>
     </view>
 
+    <!-- 打卡挑战：月度上课达标发券 -->
+    <view class="pkg ck-card" wx:if="{{checkin.enabled}}">
+      <view class="ck-head">
+        <view class="sec-title">本月打卡挑战</view>
+        <view class="ck-badge {{checkin.claimed ? 'done' : (checkin.claimable ? 'ready' : '')}}">
+          {{checkin.claimed ? '已领取' : (checkin.claimable ? '可领取' : '进行中')}}
+        </view>
+      </view>
+      <view class="ck-progress">
+        <view class="ck-bar"><view class="ck-fill" style="width: {{checkin.percent}}%"></view></view>
+        <view class="ck-num">{{checkin.count}}/{{checkin.target}} 次</view>
+      </view>
+      <view class="ck-sub">{{checkin.claimed ? '本月奖励已到账，次月再来' : (checkin.claimable ? '达标啦，领取本月奖励券' : '再上 ' + checkin.remaining + ' 次课即可领奖励券')}}</view>
+      <button wx:if="{{checkin.claimable}}" class="ck-btn" size="mini" loading="{{claiming}}" bindtap="onClaimCheckin">领取奖励</button>
+    </view>
+
     <view class="pkg">
       <view class="sec-title">训练日历（{{month}}）</view>
       <view class="week-row">

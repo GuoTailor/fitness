@@ -19,13 +19,27 @@ import (
 // OrderService 订单状态机：pending → paid →（refunding → refunded / closed）。
 // 支付成功回调（真实或 mock）统一走 HandlePaySuccess，全程幂等。
 type OrderService struct {
-	db   *gorm.DB
-	cfg  *ConfigService
-	pay  wechat.PaymentProvider
+	db       *gorm.DB
+	cfg      *ConfigService
+	pay      wechat.PaymentProvider
+	referral *ReferralService // 可为 nil：支付成功后的老带新奖励联动
+	groupBuy *GroupBuyService // 可为 nil：支付成功后的拼团成团检查
 }
 
 func NewOrderService(db *gorm.DB, cfg *ConfigService, pay wechat.PaymentProvider) *OrderService {
 	return &OrderService{db: db, cfg: cfg, pay: pay}
+}
+
+// WithReferralReward 接入老带新奖励（支付成功后检查邀请关系）
+func (s *OrderService) WithReferralReward(r *ReferralService) *OrderService {
+	s.referral = r
+	return s
+}
+
+// WithGroupBuy 接入拼团服务（支付成功后检查成团）
+func (s *OrderService) WithGroupBuy(g *GroupBuyService) *OrderService {
+	s.groupBuy = g
+	return s
 }
 
 func genOrderNo() string {
@@ -341,6 +355,31 @@ func (s *OrderService) ApplyRefund(ctx context.Context, orderID, userID int64, r
 	return &refund, nil
 }
 
+// CreateAutoRefund 系统自动退款（拼团未成团）：与用户申请同一闸门链路
+// （订单 paid→refunding + 建退款单同事务），金额由 ApproveRefund 重算落库。
+func (s *OrderService) CreateAutoRefund(ctx context.Context, orderID, userID int64, reason string) (*model.Refund, error) {
+	refund := model.Refund{
+		RefundNo: genRefundNo(), OrderID: orderID, UserID: userID,
+		Reason: reason, Status: model.RefundStatusPending,
+	}
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&model.Order{}).
+			Where("id = ? AND status = ?", orderID, model.OrderStatusPaid).
+			Update("status", model.OrderStatusRefund)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return errs.Conflict("订单当前状态不可退款")
+		}
+		return tx.Create(&refund).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &refund, nil
+}
+
 // refundCalc 退款金额计算结果（审批时快照一并落库，P0-3）
 type refundCalc struct {
 	amount    int64
@@ -588,8 +627,8 @@ func (s *OrderService) RejectRefund(ctx context.Context, refundID, adminID int64
 // 关单在先的迟到回调幂等应答（M2），避免微信无限重试。
 func (s *OrderService) HandlePaySuccess(ctx context.Context, orderNo, transactionID, raw string, paidAmount int64) error {
 	var rejectErr error // 事务内留痕后需要向调用方报错时置值（回调里 return err 会回滚留痕）
+	var order model.Order
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var order model.Order
 		if err := tx.Where("order_no = ?", orderNo).First(&order).Error; err != nil {
 			return errs.NotFound("订单不存在")
 		}
@@ -644,7 +683,18 @@ func (s *OrderService) HandlePaySuccess(ctx context.Context, orderNo, transactio
 	if err != nil {
 		return err
 	}
-	return rejectErr
+	if rejectErr != nil {
+		return rejectErr
+	}
+	// 事务外联动：老带新首单奖励（自身幂等，失败不影响支付结果）
+	if s.referral != nil {
+		s.referral.RewardOnPaidOrder(ctx, order.UserID)
+	}
+	// 事务外联动：拼团单尝试成团（幂等）
+	if s.groupBuy != nil {
+		s.groupBuy.OnOrderPaid(ctx, order.ID)
+	}
+	return nil
 }
 
 // markPaymentFailed 支付失败/金额不符/迟到回调的流水留痕（幂等）

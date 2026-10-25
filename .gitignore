@@ -31,3 +31,6 @@ Thumbs.db
 
 # runtime upload files
 server/data/
+
+# 构建产物（仓库根）
+/fitness-server.exe

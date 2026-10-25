@@ -14,6 +14,11 @@ const (
 	CfgNewcomerGiftTemplates     = "marketing.newcomer_gift_templates" // 新人礼包券模板 ID CSV，空=不发
 	CfgReviewRewardTemplate      = "marketing.review_reward_template"  // 评价奖励券模板 ID，空=不发
 	CfgRenewalReminderTemplate   = "marketing.renewal_reminder_template" // 续费提醒券模板 ID，空=不发
+	CfgReferralInviterTemplate   = "marketing.referral_inviter_template" // 老带新-邀请人奖励券模板 ID，空=不发
+	CfgReferralInviteeTemplate   = "marketing.referral_invitee_template" // 老带新-被邀请人奖励券模板 ID，空=不发
+	CfgCheckinTarget             = "marketing.checkin_target"            // 打卡挑战：每月上课达标次数，空=关闭
+	CfgCheckinRewardTemplate     = "marketing.checkin_reward_template"   // 打卡挑战奖励券模板 ID，空=不发
+	CfgGroupExpireHours          = "marketing.group_expire_hours"        // 拼团有效期（小时），默认 48
 	CfgPrivacyContent            = "misc.privacy_content"              // 隐私政策正文
 	CfgAgreementContent          = "misc.agreement_content"            // 用户协议正文
 )
@@ -40,6 +45,9 @@ const (
 	NotifySceneFeedbackNew      = "feedback_new"      // 教练课后反馈
 	NotifySceneQANew            = "qa_new"            // 课程新提问 → 通知教练
 	NotifySceneQAReply          = "qa_reply"          // 问答新回复 → 通知提问者
+	NotifySceneGroupBuySuccess  = "groupbuy_success"  // 拼团成团
+	NotifySceneGroupBuyFail     = "groupbuy_fail"     // 拼团未成团自动退款
+	NotifySceneCoachApplyResult = "coach_apply_result" // 教练入驻审核结果
 )
 
 // NotifyLog 订阅消息发送记录（uk 防重发）

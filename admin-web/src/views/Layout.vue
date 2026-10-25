@@ -6,8 +6,11 @@
         <el-menu-item index="/dashboard">数据看板</el-menu-item>
         <el-menu-item index="/packages">课包管理</el-menu-item>
         <el-menu-item index="/coaches">教练管理</el-menu-item>
+        <el-menu-item index="/coach-applications">入驻审核</el-menu-item>
         <el-menu-item index="/orders">订单管理</el-menu-item>
         <el-menu-item index="/coupons">优惠券</el-menu-item>
+        <el-menu-item index="/referrals">老带新邀请</el-menu-item>
+        <el-menu-item index="/group-buys">拼团管理</el-menu-item>
         <el-menu-item index="/members">学员管理</el-menu-item>
         <el-menu-item index="/reviews">评价管理</el-menu-item>
         <el-menu-item index="/qa">问答管理</el-menu-item>
@@ -38,12 +41,14 @@
 <script setup>
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { adminLogout } from '../api/admin'
 
 const router = useRouter()
 const profile = computed(() => JSON.parse(localStorage.getItem('admin_profile') || '{}'))
 const pending = []
 
-function onLogout() {
+async function onLogout() {
+  try { await adminLogout() } catch { /* 本地仍清除 */ }
   localStorage.removeItem('admin_token')
   localStorage.removeItem('admin_profile')
   router.push('/login')

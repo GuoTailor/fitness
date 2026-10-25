@@ -1,7 +1,7 @@
 -- 00009: P1 跟踪强化
 -- 教练课后反馈（核销单一对一，可修订）/ 体重记录（同日 upsert，克整数）
 
-CREATE TABLE class_feedback (
+CREATE TABLE IF NOT EXISTS class_feedback (
   id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   owner_id BIGINT NOT NULL DEFAULT 1,
   verification_id BIGINT NOT NULL,
@@ -15,7 +15,7 @@ CREATE TABLE class_feedback (
   KEY idx_cf_coach (coach_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE body_metric (
+CREATE TABLE IF NOT EXISTS body_metric (
   id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   user_id BIGINT NOT NULL,
   record_date DATE NOT NULL,

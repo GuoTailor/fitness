@@ -1,6 +1,6 @@
 -- 00010: P1 课程问答区（先发后审：默认 visible，后台可隐藏；置顶沉淀 FAQ）
 
-CREATE TABLE qa_question (
+CREATE TABLE IF NOT EXISTS qa_question (
   id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   owner_id BIGINT NOT NULL DEFAULT 1,
   package_id BIGINT NOT NULL,
@@ -15,7 +15,7 @@ CREATE TABLE qa_question (
   KEY idx_q_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE qa_answer (
+CREATE TABLE IF NOT EXISTS qa_answer (
   id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   owner_id BIGINT NOT NULL DEFAULT 1,
   question_id BIGINT NOT NULL,

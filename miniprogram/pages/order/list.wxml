@@ -14,6 +14,7 @@
         <text class="coupon-cut" wx:if="{{item.couponAmount > 0}}">已优惠¥{{item.couponCutYuan}}</text>
         <text class="newcomer-cut" wx:if="{{item.newcomerUsed}}">新人价</text>
         <text class="newcomer-cut" wx:if="{{item.promoUsed}}">活动价</text>
+        <text class="newcomer-cut gb-cut" wx:if="{{item.groupBuyId > 0}}">拼团</text>
       </view>
       <view class="actions">
         <button wx:if="{{item.status === 'pending'}}" class="act act-primary" size="mini" bindtap="onPay" data-id="{{item.id}}">去支付</button>

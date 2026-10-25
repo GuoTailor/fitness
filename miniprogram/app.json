@@ -5,6 +5,7 @@
     "pages/course/detail",
     "pages/coach/list",
     "pages/coach/detail",
+    "pages/coach/apply",
     "pages/booking/private",
     "pages/booking/calendar",
     "pages/booking/list",
@@ -26,6 +27,8 @@
     "pages/agreement/agreement",
     "pages/training/index",
     "pages/training/report",
+    "pages/groupbuy/list",
+    "pages/groupbuy/detail",
     "pages/mine/mine"
   ],
   "window": {

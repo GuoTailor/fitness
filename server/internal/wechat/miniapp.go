@@ -40,10 +40,36 @@ type MiniProgram interface {
 type miniApp struct {
 	appid, secret string
 	client        *http.Client
+
+	tokMu      sync.Mutex
+	token      string
+	tokenUntil time.Time
 }
 
 func NewMiniProgram(appid, secret string) MiniProgram {
 	return &miniApp{appid: appid, secret: secret, client: &http.Client{Timeout: 10 * time.Second}}
+}
+
+// accessToken 接口调用凭证（带缓存）：官方有效期 7200s，本地提前 5 分钟过期。
+// 此前每次发送/取手机号都现取一次，触发微信接口频控。
+func (m *miniApp) accessToken(ctx context.Context) (string, error) {
+	m.tokMu.Lock()
+	defer m.tokMu.Unlock()
+	if m.token != "" && time.Now().Before(m.tokenUntil) {
+		return m.token, nil
+	}
+	var out struct {
+		AccessToken string `json:"access_token"`
+	}
+	if err := m.get(ctx, "/cgi-bin/token", url.Values{"grant_type": {"client_credential"}}, &out); err != nil {
+		return "", err
+	}
+	if out.AccessToken == "" {
+		return "", errors.New("获取 access_token 失败")
+	}
+	m.token = out.AccessToken
+	m.tokenUntil = time.Now().Add(115 * time.Minute)
+	return m.token, nil
 }
 
 func (m *miniApp) get(ctx context.Context, path string, params url.Values, out interface{}) error {
@@ -88,15 +114,12 @@ func (m *miniApp) Code2Session(ctx context.Context, code string) (*LoginSession,
 }
 
 func (m *miniApp) GetPhoneNumber(ctx context.Context, phoneCode string) (string, error) {
-	// 先换 access_token（生产应缓存，P0 流量小直接换）
-	var token struct {
-		AccessToken string `json:"access_token"`
-	}
-	if err := m.get(ctx, "/cgi-bin/token", url.Values{"grant_type": {"client_credential"}}, &token); err != nil {
+	tokenStr, err := m.accessToken(ctx)
+	if err != nil {
 		return "", err
 	}
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost,
-		"https://api.weixin.qq.com/wxa/business/getuserphonenumber?access_token="+token.AccessToken,
+		"https://api.weixin.qq.com/wxa/business/getuserphonenumber?access_token="+tokenStr,
 		strings.NewReader(fmt.Sprintf(`{"code":%q}`, phoneCode)))
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := m.client.Do(req)
@@ -122,10 +145,8 @@ func (m *miniApp) GetPhoneNumber(ctx context.Context, phoneCode string) (string,
 }
 
 func (m *miniApp) SendSubscribe(ctx context.Context, openid, templateID string, data map[string]string) error {
-	var token struct {
-		AccessToken string `json:"access_token"`
-	}
-	if err := m.get(ctx, "/cgi-bin/token", url.Values{"grant_type": {"client_credential"}}, &token); err != nil {
+	tokenStr, err := m.accessToken(ctx)
+	if err != nil {
 		return err
 	}
 	payload := map[string]interface{}{
@@ -140,7 +161,7 @@ func (m *miniApp) SendSubscribe(ctx context.Context, openid, templateID string, 
 	}
 	body, _ := json.Marshal(payload)
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost,
-		"https://api.weixin.qq.com/cgi-bin/message/subscribe/send?access_token="+token.AccessToken,
+		"https://api.weixin.qq.com/cgi-bin/message/subscribe/send?access_token="+tokenStr,
 		bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := m.client.Do(req)

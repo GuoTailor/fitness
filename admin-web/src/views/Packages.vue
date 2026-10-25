@@ -77,6 +77,8 @@
                           value-format="YYYY-MM-DD HH:mm:ss" style="width: 190px" />
           <el-date-picker v-model="s.promoEnd" type="datetime" placeholder="活动结束"
                           value-format="YYYY-MM-DD HH:mm:ss" style="width: 190px" />
+          <el-input-number v-model="s.groupPrice" :min="0" :step="100" placeholder="拼团价(分,0关)" style="width: 150px" />
+          <el-input-number v-model="s.groupCapacity" :min="0" :max="5" placeholder="成团人数(0关)" style="width: 140px" />
           <el-button link type="danger" @click="form.skus.splice(i, 1)">删除</el-button>
         </div>
         <el-button size="small" style="margin-top: 8px" @click="addSku">+ 添加规格</el-button>
@@ -124,7 +126,7 @@ async function loadCoaches() {
 }
 
 function addSku() {
-  form.skus.push({ id: 0, name: '', sessions: 10, validDays: 365, price: 0, originalPrice: 0, newcomerPrice: 0, promoPrice: 0, promoStart: '', promoEnd: '', status: 1, sort: form.skus.length + 1 })
+  form.skus.push({ id: 0, name: '', sessions: 10, validDays: 365, price: 0, originalPrice: 0, newcomerPrice: 0, promoPrice: 0, promoStart: '', promoEnd: '', groupPrice: 0, groupCapacity: 0, status: 1, sort: form.skus.length + 1 })
 }
 
 function openForm(row) {
@@ -132,7 +134,7 @@ function openForm(row) {
     ? {
         ...row,
         skus: row.skus.map((s) => ({
-          newcomerPrice: 0, promoPrice: 0, promoStart: '', promoEnd: '', ...s,
+          newcomerPrice: 0, promoPrice: 0, promoStart: '', promoEnd: '', groupPrice: 0, groupCapacity: 0, ...s,
           promoStart: fmtDT(s.promoStart), promoEnd: fmtDT(s.promoEnd),
         })),
         coachIds: [...(row.coachIds || [])],

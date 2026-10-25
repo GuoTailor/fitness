@@ -1,5 +1,6 @@
 const app = getApp()
 const { request } = require('../../utils/request')
+const referral = require('../../utils/referral')
 
 Page({
   data: {
@@ -10,9 +11,20 @@ Page({
     devCode: '',
   },
 
+  onLoad(options) {
+    // 老带新：从分享卡片落地，暂存邀请码待登录后绑定
+    if (options && options.inviter) referral.captureInvite(options.inviter)
+  },
+
   onShow() {
     this.setData({ user: app.globalData.user })
     this.loadHome()
+    referral.tryBindInvite()
+  },
+
+  // 老带新：转发卡片带上邀请码
+  onShareAppMessage() {
+    return referral.shareCard('一起来健身，约课更方便', '/pages/index/index')
   },
 
   async loadHome() {

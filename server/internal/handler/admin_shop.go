@@ -46,6 +46,8 @@ type skuPayload struct {
 	PromoPrice    int64  `json:"promoPrice"`    // 限时活动价（分），0=不启用
 	PromoStart    string `json:"promoStart"`    // 2006-01-02 15:04:05，空=未设
 	PromoEnd      string `json:"promoEnd"`
+	GroupPrice    int64  `json:"groupPrice"`    // 拼团价（分），0=不启用
+	GroupCapacity int    `json:"groupCapacity"` // 成团人数 2~5，0=不启用
 	Status        int8   `json:"status"`
 	Sort          int    `json:"sort"`
 }
@@ -179,6 +181,21 @@ func (h *AdminShopHandler) SavePackage(c *gin.Context) {
 			}
 			promoStarts[i], promoEnds[i] = st, en
 		}
+		// 拼团：价与人数必须成对启用；拼团价需 < 售价且 ≥1 分；不与券/新人价/活动价叠加（服务端建单不比价）
+		if (s.GroupPrice > 0) != (s.GroupCapacity > 0) {
+			resp.Handle(c, errs.BadParam("拼团价与成团人数需同时设置"))
+			return
+		}
+		if s.GroupPrice > 0 {
+			if s.GroupPrice < 1 || s.GroupPrice >= s.Price {
+				resp.Handle(c, errs.BadParam("拼团价需大于 0 且小于售价"))
+				return
+			}
+			if s.GroupCapacity < 2 || s.GroupCapacity > 5 {
+				resp.Handle(c, errs.BadParam("成团人数需在 2~5 人"))
+				return
+			}
+		}
 	}
 	err := h.db.Transaction(func(tx *gorm.DB) error {
 		var pkg model.CoursePackage
@@ -221,6 +238,7 @@ func (h *AdminShopHandler) SavePackage(c *gin.Context) {
 				pp := s.PromoPrice
 				sku.PromoPrice, sku.PromoStart, sku.PromoEnd = &pp, promoStarts[i], promoEnds[i]
 			}
+			sku.GroupPrice, sku.GroupCapacity = s.GroupPrice, s.GroupCapacity
 			if s.ID > 0 {
 				sku.ID = s.ID
 				sku.CreatedAt = time.Now()
@@ -420,6 +438,8 @@ func (h *AdminShopHandler) SaveConfig(c *gin.Context) {
 		model.CfgMemberWarnExpireDays: true, model.CfgReviewInviteAfterDays: true,
 		model.CfgReviewAutoApprove: true, model.CfgNewcomerGiftTemplates: true,
 		model.CfgReviewRewardTemplate: true, model.CfgRenewalReminderTemplate: true,
+		model.CfgReferralInviterTemplate: true, model.CfgReferralInviteeTemplate: true,
+		model.CfgCheckinTarget: true, model.CfgCheckinRewardTemplate: true,
 		model.CfgPrivacyContent: true, model.CfgAgreementContent: true,
 	}
 	if !known[req.Key] {

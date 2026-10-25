@@ -30,6 +30,14 @@
     <button class="btn-primary" bindtap="onLogin">微信一键登录</button>
   </view>
 
+  <view class="card ref-card" wx:if="{{user}}">
+    <view class="ref-info">
+      <view class="ref-title">邀请好友得课包券</view>
+      <view class="ref-sub">{{referral.bound ? (referral.rewarded ? '好友已下单，奖励已到账' : '已接受好友邀请') : '新客首单双方各得奖励'}}</view>
+    </view>
+    <button class="ref-share" open-type="share" size="mini">立即邀请</button>
+  </view>
+
   <view class="menu card" wx:if="{{user}}">
     <navigator class="menu-item" url="/pages/training/index">我的课包</navigator>
     <navigator class="menu-item" url="/pages/booking/list">我的预约</navigator>
@@ -45,6 +53,7 @@
     </button>
     <button class="menu-btn" open-type="contact">联系客服</button>
     <navigator class="menu-item coach-entry" url="/pages/coach-admin/index" wx:if="{{isCoach}}">教练工作台 ›</navigator>
+    <navigator class="menu-item" url="/pages/coach/apply" wx:if="{{!isCoach}}">教练入驻 ›</navigator>
     <button class="menu-btn logout" bindtap="onLogout">退出登录</button>
   </view>
 

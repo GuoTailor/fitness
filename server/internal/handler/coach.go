@@ -301,22 +301,32 @@ func (h *CoachHandler) GetProfile(c *gin.Context) {
 
 func (h *CoachHandler) UpdateProfile(c *gin.Context) {
 	var req struct {
-		Name         string `json:"name"`
-		AvatarURL    string `json:"avatarUrl"`
-		Years        int    `json:"years"`
-		Specialties  string `json:"specialties"`
-		Intro        string `json:"intro"`
-		IntroVideo   string `json:"introVideoUrl"`
-		CertImages   string `json:"certImages"`
+		Name        string `json:"name"`
+		AvatarURL   string `json:"avatarUrl"`
+		Years       int    `json:"years"`
+		Specialties string `json:"specialties"`
+		Intro       string `json:"intro"`
+		IntroVideo  string `json:"introVideoUrl"`
+		CertImages  string `json:"certImages"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.Handle(c, service.BadParamJSON())
 		return
 	}
-	res := h.db.Model(&model.Coach{}).Where("id = ?", middleware.CoachID(c)).Updates(map[string]interface{}{
+	// 资质图变更后需重新审核（否则教练可绕过资质审核自行替换证书）
+	var cur model.Coach
+	if err := h.db.Select("id, cert_images").First(&cur, middleware.CoachID(c)).Error; err != nil {
+		resp.Handle(c, service.NotFoundJSON())
+		return
+	}
+	updates := map[string]interface{}{
 		"avatar_url": req.AvatarURL, "years": req.Years, "specialties": req.Specialties,
 		"intro": req.Intro, "intro_video_url": req.IntroVideo, "cert_images": req.CertImages,
-	})
+	}
+	if req.CertImages != cur.CertImages {
+		updates["cert_verified"] = 0
+	}
+	res := h.db.Model(&model.Coach{}).Where("id = ?", middleware.CoachID(c)).Updates(updates)
 	if res.Error != nil {
 		resp.Handle(c, res.Error)
 		return

@@ -1,11 +1,13 @@
 const app = getApp()
 const { request, uploadFile } = require('../../utils/request')
+const referral = require('../../utils/referral')
 
 Page({
   data: {
     user: null,
     isCoach: false,
     phoneBinding: false,
+    referral: { bound: false, rewarded: false },
     // 资料编辑
     editing: false,
     editNickname: '',
@@ -16,6 +18,21 @@ Page({
   onShow() {
     this.setData({ user: app.globalData.user, isCoach: app.globalData.isCoach })
     if (app.globalData.user) app.refreshMe()
+    referral.tryBindInvite()
+    this.loadReferral()
+  },
+
+  // 老带新：邀请状态 + 转发卡
+  async loadReferral() {
+    if (!app.globalData.user) return
+    try {
+      const data = await request({ url: '/api/v1/referral/mine' })
+      this.setData({ referral: data })
+    } catch (e) { /* 弱网容忍 */ }
+  },
+
+  onShareAppMessage() {
+    return referral.shareCard('一起来健身，约课更方便', '/pages/index/index')
   },
 
   async onLogin() {
@@ -73,7 +90,9 @@ Page({
     }
   },
 
-  onLogout() {
+  async onLogout() {
+    // 通知服务端（语义性登出，JWT 吊销由账号状态校验兜底），再清本地态
+    request({ url: '/api/v1/auth/logout', method: 'POST', data: {} }).catch(() => {})
     wx.removeStorageSync('token')
     app.globalData.user = null
     app.globalData.isCoach = false

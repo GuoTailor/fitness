@@ -1,7 +1,7 @@
 -- 00006: P1 营销一期底座
 -- 优惠券两张表 / orders.newcomer_used / app_config.cfg_value 扩 TEXT / user.phone 唯一索引 / 新配置种子
 
-CREATE TABLE coupon_template (
+CREATE TABLE IF NOT EXISTS coupon_template (
   id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   owner_id BIGINT NOT NULL DEFAULT 1,
   name VARCHAR(64) NOT NULL DEFAULT '',
@@ -19,7 +19,7 @@ CREATE TABLE coupon_template (
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE user_coupon (
+CREATE TABLE IF NOT EXISTS user_coupon (
   id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   user_id BIGINT NOT NULL DEFAULT 0,
   template_id BIGINT NOT NULL DEFAULT 0,

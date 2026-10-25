@@ -68,3 +68,15 @@ func (h *AuthHandler) AdminLogin(c *gin.Context) {
 	}
 	resp.OK(c, gin.H{"token": token, "admin": admin})
 }
+
+// Logout POST /api/v1/auth/logout 学员端登出。
+// JWT 无状态：服务端吊销由 StatusGate 的账号状态校验兜底（禁用 ≤60s 生效），
+// 此接口语义为客户端清除本地 token。
+func (h *AuthHandler) Logout(c *gin.Context) {
+	resp.OK(c, gin.H{"logout": true})
+}
+
+// AdminLogout POST /admin/api/v1/auth/logout 后台登出（同上）
+func (h *AuthHandler) AdminLogout(c *gin.Context) {
+	resp.OK(c, gin.H{"logout": true})
+}

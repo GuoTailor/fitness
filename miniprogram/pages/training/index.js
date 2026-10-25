@@ -12,6 +12,8 @@ Page({
     list: [], txns: [], current: null,
     stats: null, records: [], pending: [],
     month: '', calendar: [],
+    // 打卡挑战
+    checkin: { enabled: false }, claiming: false,
     // 体重
     weightKg: '', latestWeight: '', weightBars: [], weightCount: 0,
     // 教练反馈
@@ -26,6 +28,29 @@ Page({
     this.loadTraining()
     this.loadWeight()
     this.loadFeedbacks()
+    this.loadCheckin()
+  },
+
+  // ---- 打卡挑战 ----
+  async loadCheckin() {
+    try {
+      const data = await request({ url: '/api/v1/checkin/challenge' })
+      if (data.enabled && data.target) {
+        data.percent = Math.min(100, Math.round((data.count / data.target) * 100))
+      }
+      this.setData({ checkin: data })
+    } catch (e) { /* 未登录/弱网容忍 */ }
+  },
+
+  async onClaimCheckin() {
+    this.setData({ claiming: true })
+    try {
+      await request({ url: '/api/v1/checkin/claim', method: 'POST', data: {} })
+      wx.showToast({ title: '奖励已领取', icon: 'success' })
+      this.loadCheckin()
+    } catch (e) { /* toast 已处理 */ } finally {
+      this.setData({ claiming: false })
+    }
   },
 
   async loadHours() {

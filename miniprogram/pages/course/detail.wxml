@@ -39,6 +39,14 @@
       限时活动 · 距结束 {{promoLeft}}
     </view>
     <view class="np-tip" wx:if="{{selectedSku >= 0 && (detail.skus[selectedSku].newcomerYuan || detail.skus[selectedSku].promoActive)}}">新人价/限时活动价与优惠券不叠加，自动按最优结算；赠课券可叠加（购课赠课时）</view>
+    <!-- 拼团入口：SKU 配置了拼团价时展示 -->
+    <view class="gb-bar" wx:if="{{selectedSku >= 0 && detail.skus[selectedSku].groupPrice > 0}}">
+      <view class="gb-info">
+        <text class="gb-price">{{detail.skus[selectedSku].groupCapacity}}人团 ¥{{detail.skus[selectedSku].groupPrice / 100}}</text>
+        <text class="gb-tip">拼团价不与券/新人价叠加，未成团自动退款</text>
+      </view>
+      <button class="gb-btn" size="mini" catchtap="onGoGroupBuy">去拼团</button>
+    </view>
   </view>
 
   <view class="card">

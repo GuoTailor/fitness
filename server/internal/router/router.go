@@ -9,13 +9,16 @@ import (
 
 	"fitness/internal/auth"
 	"fitness/internal/config"
+	"fitness/internal/errs"
 	"fitness/internal/handler"
 	"fitness/internal/middleware"
+	"fitness/internal/resp"
 	"fitness/internal/service"
+	"fitness/internal/task"
 	"fitness/internal/wechat"
 )
 
-func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.MiniProgram, pay wechat.PaymentProvider) (*gin.Engine, error) {
+func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.MiniProgram, pay wechat.PaymentProvider, tasks *task.Runner) (*gin.Engine, error) {
 	if cfg.Server.Mode == "release" {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -40,20 +43,24 @@ func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.Mini
 	r.Static("/uploads", uploadSvc.Dir())
 
 	couponSvc := service.NewCouponService(db)
+	cfgSvc := service.NewConfigService(db)
+	notifySvc := service.NewNotifyService(db, mp, cfg.Notify.Mock, cfg.Notify.Templates)
+	referralSvc := service.NewReferralService(db, couponSvc, cfgSvc)
+	checkinSvc := service.NewCheckinService(db, couponSvc, cfgSvc)
+	gbSvc := service.NewGroupBuyService(db, cfgSvc).WithNotify(notifySvc)
 	authSvc := service.NewAuthService(db, tokens, mp).
 		WithLockout(middleware.NewAdminLockout(5, 15)). // 连续失败5次锁15分钟
-		WithCouponGifts(couponSvc)                     // 新用户自动发新人礼包
-	cfgSvc := service.NewConfigService(db)
+		WithCouponGifts(couponSvc)                      // 新用户自动发新人礼包
 	shopSvc := service.NewShopService(db, cfg.OwnerID)
-	orderSvc := service.NewOrderService(db, cfgSvc, pay)
+	orderSvc := service.NewOrderService(db, cfgSvc, pay).WithReferralReward(referralSvc).WithGroupBuy(gbSvc)
 	memberSvc := service.NewMemberService(db)
-	notifySvc := service.NewNotifyService(db, mp, cfg.Notify.Mock, cfg.Notify.Templates)
 	bookingSvc := service.NewBookingService(db, cfgSvc).WithNotify(notifySvc)
 	groupSvc := service.NewGroupService(db, cfgSvc).WithNotify(notifySvc)
 	verifySvc := service.NewVerifyService(db)
 	feedbackSvc := service.NewFeedbackService(db).WithNotify(notifySvc)
 	bodySvc := service.NewBodyService(db)
 	qaSvc := service.NewQaService(db).WithNotify(notifySvc)
+	coachApplySvc := service.NewCoachApplicationService(db).WithNotify(notifySvc).WithUploadPrefixes(cfg.Upload.BaseURL)
 	auditSvc := service.NewAuditService(db)
 	reviewSvc := service.NewReviewService(db, cfgSvc).WithUploadPrefixes(cfg.Upload.BaseURL).WithRewardCoupons(couponSvc)
 	statsSvc := service.NewStatsService(db)
@@ -76,6 +83,10 @@ func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.Mini
 	feedbackH := handler.NewFeedbackHandler(feedbackSvc, bodySvc, verifySvc)
 	qaH := handler.NewQaHandler(qaSvc)
 	adminAuditH := handler.NewAdminAuditHandler(auditSvc)
+	referralH := handler.NewReferralHandler(referralSvc)
+	checkinH := handler.NewCheckinHandler(checkinSvc)
+	gbH := handler.NewGroupBuyHandler(gbSvc)
+	coachApplyH := handler.NewCoachApplyHandler(coachApplySvc).WithAudit(auditSvc)
 
 	r.GET("/healthz", handler.Ping)
 
@@ -88,9 +99,10 @@ func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.Mini
 
 	// ---- 学员端 / 教练端（同小程序）----
 	api := r.Group("/api/v1")
-	api.Use(middleware.JWT(tokens))
+	api.Use(middleware.JWT(tokens), middleware.StatusGate(db))
 	{
 		api.POST("/auth/login", middleware.LoginRateLimit(10), authH.Login)
+		api.POST("/auth/logout", middleware.RequireUser(), authH.Logout)
 		api.POST("/auth/phone", middleware.RequireUser(), authH.BindPhone)
 		api.GET("/me", middleware.RequireUser(), meH.Me)
 		api.PUT("/me", middleware.RequireUser(), meH.UpdateMe)
@@ -112,6 +124,21 @@ func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.Mini
 		api.GET("/coupons/mine", middleware.RequireUser(), couponH.Mine)
 		api.GET("/coupons/usable", middleware.RequireUser(), couponH.Usable)
 		api.POST("/coupons/:id/claim", middleware.RequireUser(), couponH.Claim)
+		// 老带新裂变（邀请码即用户 ID，首单实付后双方发券）
+		api.POST("/referral/bind", middleware.RequireUser(), referralH.Bind)
+		api.GET("/referral/mine", middleware.RequireUser(), referralH.Mine)
+		// 打卡挑战（月度上课达标发券）
+		api.GET("/checkin/challenge", middleware.RequireUser(), checkinH.Status)
+		api.POST("/checkin/claim", middleware.RequireUser(), checkinH.Claim)
+		// 拼团（开团/参团返回待支付订单，再走 prepay）
+		api.POST("/group-buys", middleware.RequireUser(), gbH.Open)
+		api.GET("/group-buys", middleware.RequireUser(), gbH.ListOpen)
+		api.GET("/group-buys/mine", middleware.RequireUser(), gbH.My)
+		api.GET("/group-buys/:id", middleware.RequireUser(), gbH.Detail)
+		api.POST("/group-buys/:id/join", middleware.RequireUser(), gbH.Join)
+		// 教练入驻申请
+		api.POST("/coach-applications", middleware.RequireUser(), coachApplyH.Submit)
+		api.GET("/coach-applications/mine", middleware.RequireUser(), coachApplyH.Mine)
 		// 图片上传（评价图等）
 		api.POST("/uploads", middleware.RequireUser(), uploadH.Create)
 
@@ -187,9 +214,10 @@ func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.Mini
 
 	// ---- 管理后台 ----
 	admin := r.Group("/admin/api/v1")
-	admin.Use(middleware.JWT(tokens))
+	admin.Use(middleware.JWT(tokens), middleware.StatusGate(db))
 	{
 		admin.POST("/auth/login", middleware.LoginRateLimit(10), authH.AdminLogin)
+		admin.POST("/auth/logout", authH.AdminLogout)
 	}
 	a := admin.Group("", middleware.RequireAdmin())
 	{
@@ -244,6 +272,23 @@ func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.Mini
 		a.POST("/qa/answers/:id/status", qaH.SetAnswerStatus)
 		// 操作审计日志（仅老板）
 		a.GET("/audit-logs", middleware.RequireBoss(), adminAuditH.List)
+		// 老带新邀请记录
+		a.GET("/referrals", referralH.AdminList)
+		// 拼团列表
+		a.GET("/group-buys", gbH.AdminList)
+		// 教练入驻审核（敏感操作，仅老板）
+		a.GET("/coach-applications", coachApplyH.AdminList)
+		a.POST("/coach-applications/:id/approve", middleware.RequireBoss(), coachApplyH.Approve)
+		a.POST("/coach-applications/:id/reject", middleware.RequireBoss(), coachApplyH.Reject)
+		// 手动触发一轮定时任务（仅 mock 环境、仅老板）——冒烟/E2E 验证任务链路用
+		a.POST("/tasks/run", func(c *gin.Context) {
+			if !cfg.WeChat.Mock || !cfg.Pay.Mock || !cfg.Notify.Mock {
+				resp.Handle(c, errs.Forbidden("仅开发环境可手动触发任务"))
+				return
+			}
+			tasks.RunOnce(c.Request.Context())
+			resp.OK(c, gin.H{"ran": true})
+		})
 	}
 
 	return r, nil

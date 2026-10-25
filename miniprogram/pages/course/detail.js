@@ -1,5 +1,6 @@
 const app = getApp()
 const { request } = require('../../utils/request')
+const referral = require('../../utils/referral')
 
 Page({
   data: {
@@ -18,6 +19,14 @@ Page({
   onLoad(query) {
     this.setData({ id: query.id })
     this.load()
+  },
+
+  // 老带新：课包详情转发卡带上邀请码
+  onShareAppMessage() {
+    return referral.shareCard(
+      (this.data.detail && this.data.detail.title) || '一起来健身',
+      '/pages/course/detail?id=' + this.data.id
+    )
   },
 
   async load() {
@@ -171,6 +180,12 @@ Page({
     if (sku.newcomerEligible && sku.newcomerPrice && sku.newcomerPrice < pay) pay = sku.newcomerPrice
     if (sku.promoActive && sku.promoPrice && sku.promoPrice < pay) pay = sku.promoPrice
     this.setData({ payYuan: (pay / 100).toFixed(2) })
+  },
+
+  // 拼团入口：跳转该 SKU 的开团/参团列表
+  onGoGroupBuy() {
+    const sku = this.data.detail.skus[this.data.selectedSku]
+    wx.navigateTo({ url: `/pages/groupbuy/list?pkgId=${this.data.id}&skuId=${sku.id}` })
   },
 
   async onBuy() {

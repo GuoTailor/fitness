@@ -41,6 +41,15 @@ export const featureReview = (id, featured) => http.post(`/admin/api/v1/reviews/
 
 // ---- 优惠券 ----
 export const listCoupons = () => http.get('/admin/api/v1/coupons')
+
+// 问答区管理
+export const listQa = (params) => http.get('/admin/api/v1/qa', { params })
+export const setQaStatus = (id, status) => http.post(`/admin/api/v1/qa/questions/${id}/status`, { status })
+export const setQaAnswerStatus = (id, status) => http.post(`/admin/api/v1/qa/answers/${id}/status`, { status })
+export const setQaPin = (id, pinned) => http.post(`/admin/api/v1/qa/questions/${id}/pin`, { pinned })
+
+// 操作审计日志
+export const listAuditLogs = (params) => http.get('/admin/api/v1/audit-logs', { params })
 export const saveCoupon = (data) =>
   data.id > 0 ? http.post(`/admin/api/v1/coupons/${data.id}`, data) : http.post('/admin/api/v1/coupons', data)
 export const toggleCoupon = (id, status) => http.post(`/admin/api/v1/coupons/${id}/status`, { status })

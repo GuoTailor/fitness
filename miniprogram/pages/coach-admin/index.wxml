@@ -10,6 +10,8 @@
     <button class="act" bindtap="goSchedule">可约时段</button>
     <button class="act" bindtap="goGroups">团课管理</button>
     <button class="act" bindtap="goReviews">学员评价</button>
+    <button class="act" bindtap="goFeedback">学员反馈</button>
+    <button class="act" bindtap="goQa">留言答疑</button>
   </view>
 
   <view class="card">

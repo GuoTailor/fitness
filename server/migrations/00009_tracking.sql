@@ -1,0 +1,26 @@
+-- 00009: P1 跟踪强化
+-- 教练课后反馈（核销单一对一，可修订）/ 体重记录（同日 upsert，克整数）
+
+CREATE TABLE class_feedback (
+  id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  owner_id BIGINT NOT NULL DEFAULT 1,
+  verification_id BIGINT NOT NULL,
+  coach_id BIGINT NOT NULL,
+  user_id BIGINT NOT NULL,
+  content TEXT NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_cf_verify (verification_id),
+  KEY idx_cf_user (user_id),
+  KEY idx_cf_coach (coach_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE body_metric (
+  id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  record_date DATE NOT NULL,
+  weight_g INT NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_bm (user_id, record_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

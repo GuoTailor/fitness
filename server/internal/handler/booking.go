@@ -4,19 +4,39 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"fitness/internal/middleware"
+	"fitness/internal/model"
 	"fitness/internal/resp"
 	"fitness/internal/service"
 )
 
 // BookingHandler 学员端预约/团课/训练
 type BookingHandler struct {
-	booking *service.BookingService
-	group   *service.GroupService
-	verify  *service.VerifyService
+	booking  *service.BookingService
+	group    *service.GroupService
+	verify   *service.VerifyService
+	feedback *service.FeedbackService
 }
 
-func NewBookingHandler(b *service.BookingService, g *service.GroupService, v *service.VerifyService) *BookingHandler {
-	return &BookingHandler{booking: b, group: g, verify: v}
+func NewBookingHandler(b *service.BookingService, g *service.GroupService, v *service.VerifyService, f *service.FeedbackService) *BookingHandler {
+	return &BookingHandler{booking: b, group: g, verify: v, feedback: f}
+}
+
+// Detail GET /api/v1/bookings/:id 预约详情（含教练课后反馈）
+func (h *BookingHandler) Detail(c *gin.Context) {
+	id, ok := idParam(c, "id")
+	if !ok {
+		return
+	}
+	b, err := h.booking.OwnedBooking(c.Request.Context(), middleware.UserID(c), id)
+	if err != nil {
+		resp.Handle(c, err)
+		return
+	}
+	var feedback map[string]interface{}
+	if h.feedback != nil && b.Status == model.BookingStatusCompleted {
+		feedback = h.feedback.OfBooking(c.Request.Context(), b.UserID, b.ID)
+	}
+	resp.OK(c, gin.H{"booking": b, "feedback": feedback})
 }
 
 // Slots GET /api/v1/coaches/:id/slots?date=
@@ -113,10 +133,15 @@ func (h *BookingHandler) GroupDetail(c *gin.Context) {
 	if !ok {
 		return
 	}
-	data, err := h.group.Detail(c.Request.Context(), id, middleware.UserID(c))
+	uid := middleware.UserID(c)
+	data, err := h.group.Detail(c.Request.Context(), id, uid)
 	if err != nil {
 		resp.Handle(c, err)
 		return
+	}
+	// 已核销 → 附带教练课后反馈（经我的报名核销单关联）
+	if h.feedback != nil && data["myStatus"] == model.GEStatusVerified {
+		data["feedback"] = h.feedback.OfGroupClass(c.Request.Context(), uid, id)
 	}
 	resp.OK(c, data)
 }
@@ -153,6 +178,40 @@ func (h *BookingHandler) GroupQuit(c *gin.Context) {
 		return
 	}
 	resp.OK(c, gin.H{"quit": true})
+}
+
+// GroupWaitlist POST /api/v1/group-classes/:id/waitlist 满员候补登记
+func (h *BookingHandler) GroupWaitlist(c *gin.Context) {
+	id, ok := idParam(c, "id")
+	if !ok {
+		return
+	}
+	var req struct {
+		MemberPackageID int64 `json:"memberPackageId" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.Handle(c, service.BadParamJSON())
+		return
+	}
+	wl, err := h.group.Waitlist(c.Request.Context(), id, middleware.UserID(c), req.MemberPackageID)
+	if err != nil {
+		resp.Handle(c, err)
+		return
+	}
+	resp.OK(c, wl)
+}
+
+// GroupWaitlistCancel POST /api/v1/group-classes/:id/waitlist/cancel
+func (h *BookingHandler) GroupWaitlistCancel(c *gin.Context) {
+	id, ok := idParam(c, "id")
+	if !ok {
+		return
+	}
+	if err := h.group.CancelWaitlist(c.Request.Context(), id, middleware.UserID(c)); err != nil {
+		resp.Handle(c, err)
+		return
+	}
+	resp.OK(c, gin.H{"canceled": true})
 }
 
 // GroupCode GET /api/v1/group-classes/:id/code

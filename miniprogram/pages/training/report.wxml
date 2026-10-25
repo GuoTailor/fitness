@@ -1,0 +1,56 @@
+<view class="page">
+  <view class="week-nav">
+    <view class="nav-btn" bindtap="onPrev">‹ 上周</view>
+    <view class="week-text">{{weekText}}</view>
+    <view class="nav-btn" bindtap="onNext">下周 ›</view>
+  </view>
+
+  <block wx:if="{{report}}">
+    <view class="stat-grid">
+      <view class="stat">
+        <view class="v">{{report.current.sessions}}</view>
+        <view class="l">上课（{{report.deltas.sessions}}）</view>
+      </view>
+      <view class="stat">
+        <view class="v">{{report.current.minutes}}</view>
+        <view class="l">分钟（{{report.deltas.minutes}}）</view>
+      </view>
+      <view class="stat">
+        <view class="v">{{report.current.activeDays}}</view>
+        <view class="l">训练天数（{{report.deltas.activeDays}}）</view>
+      </view>
+      <view class="stat">
+        <view class="v">{{report.weight.deltaText || '—'}}</view>
+        <view class="l">体重变化</view>
+      </view>
+    </view>
+
+    <view class="card">
+      <view class="sec-title">课程构成</view>
+      <view class="src-row">
+        <text class="src">私教 {{report.current.private}} 节</text>
+        <text class="src">团课 {{report.current.group}} 节</text>
+      </view>
+      <view class="txn-empty" wx:if="{{!report.current.sessions}}">本周还没有训练记录</view>
+    </view>
+
+    <view class="card" wx:if="{{report.byCoach.length}}">
+      <view class="sec-title">教练课时榜</view>
+      <view class="coach-row" wx:for="{{report.byCoach}}" wx:key="coachId">
+        <text class="c-name">{{item.coachName || '教练 #' + item.coachId}}</text>
+        <text class="c-num">{{item.sessions}} 节 · {{item.minutes}} 分钟</text>
+      </view>
+    </view>
+
+    <view class="card" wx:if="{{report.weight.first}}">
+      <view class="sec-title">本周体重</view>
+      <view class="w-line">
+        <text>周一 {{report.weight.first / 1000}} kg</text>
+        <text>→</text>
+        <text>最近 {{report.weight.last / 1000}} kg</text>
+      </view>
+    </view>
+
+    <view class="tip">上周对比：上课 {{report.prev.sessions}} 节 · {{report.prev.minutes}} 分钟</view>
+  </block>
+</view>

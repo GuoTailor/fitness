@@ -3,6 +3,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
@@ -164,7 +165,11 @@ func (s *AuthService) AdminLogin(ctx context.Context, username, password, ip str
 		return "", nil, errs.Unauthorized("用户名或密码错误")
 	}
 	if err := s.db.Where("username = ?", username).First(&admin).Error; err != nil {
-		return fail()
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return fail()
+		}
+		// 数据库异常不当作密码错误（否则连接抖动会污染失败锁定计数）
+		return "", nil, errs.Server(err, "登录服务暂不可用，请稍后再试")
 	}
 	if admin.Status != 1 {
 		return "", nil, errs.Forbidden("账号已被禁用")

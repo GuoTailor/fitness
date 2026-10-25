@@ -19,6 +19,20 @@ type CoachSchedule struct {
 
 func (CoachSchedule) TableName() string { return "coach_schedule" }
 
+// CoachLeave 教练请假（当日时段屏蔽，SlotsOfDate/Create 均排除；全天=0~1440）
+type CoachLeave struct {
+	ID          int64     `gorm:"primaryKey;autoIncrement" json:"id"`
+	OwnerID     int64     `gorm:"column:owner_id;default:1" json:"-"`
+	CoachID     int64     `gorm:"index:idx_leave_coach" json:"coachId"`
+	LeaveDate   string    `gorm:"column:leave_date;type:date;index:idx_leave_coach" json:"leaveDate"`
+	StartMinute int       `json:"startMinute"`
+	EndMinute   int       `json:"endMinute"`
+	Reason      string    `gorm:"size:200" json:"reason"`
+	CreatedAt   time.Time `json:"createdAt"`
+}
+
+func (CoachLeave) TableName() string { return "coach_leave" }
+
 // 私教预约状态
 const (
 	BookingStatusPending   = "pending"   // 待教练确认
@@ -117,3 +131,26 @@ type GroupEnrollment struct {
 }
 
 func (GroupEnrollment) TableName() string { return "group_enrollment" }
+
+// 候补状态
+const (
+	WLStatusWaiting  = "waiting"  // 排队中（不扣次）
+	WLStatusPromoted = "promoted" // 已自动递补（占位+扣次完成）
+	WLStatusFailed   = "failed"   // 递补时登记课包已不可用/已报名过
+	WLStatusCanceled = "canceled" // 学员主动取消候补 / 课程取消
+)
+
+// GroupWaitlist 团课候补：满员后登记排队（UNIQUE 同课同人），
+// 有人退出时按 FIFO 自动递补（复用报名事务，扣次幂等键同报名世代）。
+type GroupWaitlist struct {
+	ID              int64      `gorm:"primaryKey;autoIncrement" json:"id"`
+	OwnerID         int64      `gorm:"column:owner_id;default:1" json:"-"`
+	GroupClassID    int64      `gorm:"uniqueIndex:uk_wl;index:idx_wl_class" json:"groupClassId"`
+	UserID          int64      `gorm:"uniqueIndex:uk_wl" json:"userId"`
+	MemberPackageID int64      `json:"memberPackageId"` // 递补时用此课包扣次
+	Status          string     `gorm:"size:16;default:waiting;index:idx_wl_class" json:"status"`
+	CreatedAt       time.Time  `json:"createdAt"`
+	PromotedAt      *time.Time `json:"promotedAt"`
+}
+
+func (GroupWaitlist) TableName() string { return "group_waitlist" }

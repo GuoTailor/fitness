@@ -61,6 +61,9 @@ func (s *BookingService) SlotsOfDate(ctx context.Context, coachID int64, date st
 		Where("coach_id = ? AND booking_date = ? AND status IN ?", coachID, date,
 			[]string{model.BookingStatusPending, model.BookingStatusConfirmed}).
 		Find(&bookings)
+	// 当日请假时段（与预约同样按区间重叠排除）
+	var leaves []model.CoachLeave
+	s.db.WithContext(ctx).Where("coach_id = ? AND leave_date = ?", coachID, date).Find(&leaves)
 
 	dayStart, _ := time.ParseInLocation("2006-01-02", date, time.Local)
 	now := time.Now()
@@ -82,6 +85,15 @@ func (s *BookingService) SlotsOfDate(ctx context.Context, coachID int64, date st
 			if overlap {
 				continue
 			}
+			for _, l := range leaves {
+				if l.StartMinute < end && l.EndMinute > st {
+					overlap = true
+					break
+				}
+			}
+			if overlap {
+				continue
+			}
 			slots = append(slots, Slot{StartMinute: st, EndMinute: end, Label: minuteLabel(st)})
 		}
 	}
@@ -90,6 +102,62 @@ func (s *BookingService) SlotsOfDate(ctx context.Context, coachID int64, date st
 
 func minuteLabel(m int) string {
 	return fmt.Sprintf("%02d:%02d", m/60, m%60)
+}
+
+// ---- 教练请假 ----
+
+// AddLeave 教练登记请假（屏蔽当日时段）。返回受影响的存量有效预约数（需教练线下协调，不自动取消）。
+func (s *BookingService) AddLeave(ctx context.Context, coachID int64, date string, startMinute, endMinute int, reason string) (*model.CoachLeave, int, error) {
+	if _, err := time.Parse("2006-01-02", date); err != nil {
+		return nil, 0, errs.BadParam("日期格式应为 YYYY-MM-DD")
+	}
+	if startMinute < 0 || endMinute > 24*60 || startMinute%30 != 0 || endMinute%30 != 0 || endMinute <= startMinute {
+		return nil, 0, errs.BadParam("请假时段不合法（30 分钟粒度，0~1440）")
+	}
+	var coach model.Coach
+	if err := s.db.WithContext(ctx).Where("id = ?", coachID).First(&coach).Error; err != nil {
+		return nil, 0, errs.NotFound("教练不存在")
+	}
+	leave := model.CoachLeave{
+		OwnerID: coach.OwnerID, CoachID: coachID, LeaveDate: date,
+		StartMinute: startMinute, EndMinute: endMinute, Reason: reason,
+	}
+	if err := s.db.WithContext(ctx).Create(&leave).Error; err != nil {
+		return nil, 0, errs.Server(err, "登记请假失败")
+	}
+	var affected int64
+	s.db.WithContext(ctx).Model(&model.Booking{}).
+		Where("coach_id = ? AND booking_date = ? AND status IN ? AND start_minute < ? AND end_minute > ?",
+			coachID, date,
+			[]string{model.BookingStatusPending, model.BookingStatusConfirmed},
+			endMinute, startMinute).
+		Count(&affected)
+	return &leave, int(affected), nil
+}
+
+// LeavesOf 教练请假列表（可传 from/to=YYYY-MM-DD）
+func (s *BookingService) LeavesOf(ctx context.Context, coachID int64, from, to string) ([]model.CoachLeave, error) {
+	q := s.db.WithContext(ctx).Where("coach_id = ?", coachID)
+	if from != "" && to != "" {
+		q = q.Where("leave_date BETWEEN ? AND ?", from, to)
+	}
+	var leaves []model.CoachLeave
+	err := q.Order("leave_date, start_minute").Limit(100).Find(&leaves).Error
+	return leaves, err
+}
+
+// CancelLeave 撤销请假（仅本人记录）
+func (s *BookingService) CancelLeave(ctx context.Context, coachID, leaveID int64) error {
+	res := s.db.WithContext(ctx).
+		Where("id = ? AND coach_id = ?", leaveID, coachID).
+		Delete(&model.CoachLeave{})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return errs.NotFound("请假记录不存在")
+	}
+	return nil
 }
 
 // dateOnly 规范化从数据库读回的 DATE 字符串：
@@ -173,6 +241,15 @@ func (s *BookingService) Create(ctx context.Context, userID, coachID, memberPack
 			Count(&overlapCnt)
 		if overlapCnt > 0 {
 			return errs.Conflict("该时段刚被占用，请刷新选择其他时段")
+		}
+		// 教练请假时段不可约（请假录入晚于下单的存量预约不自动取消，由教练线下协调）
+		var leaveCnt int64
+		tx.Model(&model.CoachLeave{}).
+			Where("coach_id = ? AND leave_date = ? AND start_minute < ? AND end_minute > ?",
+				coachID, date, startMinute+lessonMinutes, startMinute).
+			Count(&leaveCnt)
+		if leaveCnt > 0 {
+			return errs.Biz("教练该时段请假，请选择其他时间")
 		}
 		booking = model.Booking{
 			OwnerID: coach.OwnerID, UserID: userID, CoachID: coachID,
@@ -264,8 +341,17 @@ func returnOne(tx *gorm.DB, mp *model.MemberPackage, idemKey, bizType string, bi
 }
 
 // MyBookings 学员预约列表
-func (s *BookingService) MyBookings(ctx context.Context, userID int64, status string) ([]model.Booking, error) {
-	q := s.db.WithContext(ctx).Where("user_id = ?", userID)
+// OwnedBooking 本人预约详情（他人资源 404 隔离）
+func (s *BookingService) OwnedBooking(ctx context.Context, userID, bookingID int64) (*model.Booking, error) {
+	var b model.Booking
+	if err := s.db.WithContext(ctx).
+		Where("id = ? AND user_id = ?", bookingID, userID).First(&b).Error; err != nil {
+		return nil, errs.NotFound("预约不存在")
+	}
+	return &b, nil
+}
+
+func (s *BookingService) MyBookings(ctx context.Context, userID int64, status string) ([]model.Booking, error) {	q := s.db.WithContext(ctx).Where("user_id = ?", userID)
 	if status != "" {
 		q = q.Where("status = ?", status)
 	}

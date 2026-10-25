@@ -88,6 +88,37 @@
       </view>
     </view>
 
+    <view class="report-entry" bindtap="goReport">
+      <view class="re-l">
+        <view class="re-t">训练周报</view>
+        <view class="re-s">每周训练量、教练分布与体重变化</view>
+      </view>
+      <view class="re-go">查看 ›</view>
+    </view>
+
+    <view class="pkg">
+      <view class="sec-title">体重记录 {{latestWeight ? '· 当前 ' + latestWeight + 'kg' : ''}}</view>
+      <view class="w-input-row">
+        <input class="w-input" type="digit" placeholder="记录今日体重（kg）" value="{{weightKg}}" bindinput="onWeightInput" />
+        <button class="w-save" size="mini" bindtap="onSaveWeight">记录</button>
+      </view>
+      <view class="w-chart" wx:if="{{weightBars.length > 1}}">
+        <view class="w-bar" wx:for="{{weightBars}}" wx:key="index" style="height: {{item.pct}}%"></view>
+      </view>
+      <view class="txn-empty" wx:if="{{weightCount < 2}}">记录两次以上体重后展示趋势曲线</view>
+    </view>
+
+    <view class="pkg" wx:if="{{feedbacks.length}}">
+      <view class="sec-title">教练课后反馈</view>
+      <view class="fb" wx:for="{{feedbacks}}" wx:key="index">
+        <view class="fb-head">
+          <text class="fb-coach">{{item.coachName}} 教练</text>
+          <text class="fb-meta">{{item.typeText}} · {{item.dateText}}</text>
+        </view>
+        <view class="fb-content">{{item.feedback.content}}</view>
+      </view>
+    </view>
+
     <view class="pkg" wx:if="{{pending.length}}">
       <view class="sec-title">待评价（{{pending.length}}）</view>
       <view class="pend" wx:for="{{pending}}" wx:key="verificationId" bindtap="goReview">

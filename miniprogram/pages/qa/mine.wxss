@@ -1,0 +1,15 @@
+.page { padding: 24rpx; }
+.q { background: #fff; border-radius: 16rpx; padding: 24rpx; margin-bottom: 20rpx; }
+.q-head { display: flex; justify-content: space-between; margin-bottom: 10rpx; }
+.q-pkg { font-size: 22rpx; color: #00B578; }
+.q-status { font-size: 22rpx; color: #67c23a; }
+.q-status.hidden { color: #bbb; }
+.q-content { font-size: 28rpx; font-weight: 500; line-height: 1.6; }
+.q-meta { font-size: 20rpx; color: #bbb; margin-top: 8rpx; }
+.a { display: flex; gap: 12rpx; margin-top: 16rpx; padding-top: 16rpx; border-top: 1rpx dashed #f0f0f0; }
+.a-badge { flex-shrink: 0; font-size: 20rpx; background: #f0f9eb; color: #67c23a; border-radius: 6rpx; padding: 2rpx 10rpx; height: 36rpx; }
+.a-badge.coach { background: #00B578; color: #fff; }
+.a-body { flex: 1; }
+.a-content { font-size: 26rpx; color: #444; line-height: 1.6; }
+.a-meta { font-size: 20rpx; color: #bbb; margin-top: 6rpx; }
+.empty { text-align: center; color: #bbb; padding: 80rpx 0; font-size: 26rpx; }

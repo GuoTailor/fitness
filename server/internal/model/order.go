@@ -33,6 +33,8 @@ type Order struct {
 	SkuUnitPrice  int64     `gorm:"default:0" json:"skuUnitPrice"`
 	// 本单使用了新人价（每人限购一次，按手机号判重；与优惠券不叠加取低价）
 	NewcomerUsed  int8      `gorm:"default:0" json:"newcomerUsed"`
+	PromoUsed     int8      `gorm:"default:0" json:"promoUsed"`       // 本单使用了限时活动价
+	GiftSessions  int       `gorm:"default:0" json:"giftSessions"`    // 赠课券赠送课时数（入账快照）
 	Remark        string    `gorm:"size:255" json:"remark"`
 	CreatedAt     time.Time `json:"createdAt"`
 	UpdatedAt     time.Time `json:"updatedAt"`

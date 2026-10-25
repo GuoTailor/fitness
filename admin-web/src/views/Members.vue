@@ -11,7 +11,7 @@
           <template #default="{ row }">{{ row.user.nickname || '—' }}</template>
         </el-table-column>
         <el-table-column label="手机号" width="130">
-          <template #default="{ row }">{{ row.user.phone || '未绑定' }}</template>
+          <template #default="{ row }">{{ row.user.phone ? maskPhone(row.user.phone) : '未绑定' }}</template>
         </el-table-column>
         <el-table-column prop="packageCount" label="持有课包" width="90" />
         <el-table-column prop="remainingSessions" label="剩余课时" width="90" />
@@ -64,6 +64,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { listMembers, memberPackages, adjustSessions } from '../api/admin'
+import { maskPhone } from '../utils/phone'
 
 const list = ref([])
 const total = ref(0)
@@ -74,7 +75,7 @@ const loading = ref(false)
 const drawer = ref(false)
 const pkgs = ref([])
 const adjustDialog = ref(false)
-const adjustForm = reactive({ mpId: 0, userId: 0, change: 1, remark: '' })
+const adjustForm = reactive({ mpId: 0, userId: 0, change: 1, remark: '', clientKey: '' })
 
 const fmtTime = (t) => (t ? String(t).replace('T', ' ').slice(0, 19) : '—')
 
@@ -99,13 +100,14 @@ function openAdjust(row) {
   adjustForm.userId = row.userId
   adjustForm.change = 1
   adjustForm.remark = ''
+  adjustForm.clientKey = 'adj-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10)
   adjustDialog.value = true
 }
 
 async function doAdjust() {
   if (!adjustForm.change) return ElMessage.warning('调整值不能为 0')
   await adjustSessions(adjustForm.userId, adjustForm.mpId, {
-    change: adjustForm.change, remark: adjustForm.remark || '后台调整',
+    change: adjustForm.change, remark: adjustForm.remark || '后台调整', clientKey: adjustForm.clientKey,
   })
   ElMessage.success('已调整')
   adjustDialog.value = false

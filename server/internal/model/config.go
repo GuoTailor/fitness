@@ -12,6 +12,8 @@ const (
 	CfgReviewInviteAfterDays     = "review.invite_after_days"
 	CfgReviewAutoApprove         = "review.auto_approve" // 1=评价免审直接通过
 	CfgNewcomerGiftTemplates     = "marketing.newcomer_gift_templates" // 新人礼包券模板 ID CSV，空=不发
+	CfgReviewRewardTemplate      = "marketing.review_reward_template"  // 评价奖励券模板 ID，空=不发
+	CfgRenewalReminderTemplate   = "marketing.renewal_reminder_template" // 续费提醒券模板 ID，空=不发
 	CfgPrivacyContent            = "misc.privacy_content"              // 隐私政策正文
 	CfgAgreementContent          = "misc.agreement_content"            // 用户协议正文
 )
@@ -34,6 +36,10 @@ const (
 	NotifySceneReviewInvite     = "review_invite"     // 核销次日评价邀请
 	NotifySceneSessionsWarning  = "sessions_warning"  // 课时不足
 	NotifySceneExpireWarning    = "expire_warning"    // 快到期
+	NotifySceneWaitlistPromoted = "waitlist_promoted" // 团课候补递补成功
+	NotifySceneFeedbackNew      = "feedback_new"      // 教练课后反馈
+	NotifySceneQANew            = "qa_new"            // 课程新提问 → 通知教练
+	NotifySceneQAReply          = "qa_reply"          // 问答新回复 → 通知提问者
 )
 
 // NotifyLog 订阅消息发送记录（uk 防重发）

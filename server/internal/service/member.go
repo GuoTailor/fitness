@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -38,9 +39,15 @@ func (s *MemberService) MyTransactions(ctx context.Context, userID, memberPackag
 
 // AdjustSessions 后台手动调整（赠课 +N / 扣课 -N）。
 // 每次操作生成独立流水；正数加 total、负数计 used，剩余课时始终 = total - used。
-func (s *MemberService) AdjustSessions(ctx context.Context, userID, memberPackageID int64, change int, remark, adminName string) (*model.MemberPackage, error) {
+// clientKey 非空时作为幂等键（后台防双击/重放，同键重复提交直接拒绝）；
+// 为空则生成随机键（历史行为：每次调用都是一笔独立调整）。
+func (s *MemberService) AdjustSessions(ctx context.Context, userID, memberPackageID int64, change int, remark, adminName, clientKey string) (*model.MemberPackage, error) {
 	if change == 0 {
 		return nil, errs.BadParam("调整数量不能为 0")
+	}
+	key := "adjust:" + randHex(12)
+	if strings.TrimSpace(clientKey) != "" {
+		key = "adjust:client:" + strings.TrimSpace(clientKey)
 	}
 	var mp model.MemberPackage
 	err := s.db.WithContext(ctx).Where("id = ? AND user_id = ?", memberPackageID, userID).First(&mp).Error
@@ -54,9 +61,12 @@ func (s *MemberService) AdjustSessions(ctx context.Context, userID, memberPackag
 		if err := tx.Create(&model.PackageTransaction{
 			MemberPackageID: mp.ID, UserID: userID, SessionsChange: change,
 			Type: model.TxnTypeManualAdjust,
-			IdempotencyKey: "manual:" + time.Now().Format("20060102150405.000000000") + "-" + fmtInt64(mp.ID),
+			IdempotencyKey: key,
 			BizType: "manual", BizID: 0, Remark: "[" + adminName + "] " + remark,
 		}).Error; err != nil {
+			if isDuplicateKey(err) {
+				return errs.Biz("重复的调整请求，请勿重复提交")
+			}
 			return err
 		}
 		updates := map[string]interface{}{"updated_at": time.Now()}
@@ -70,6 +80,9 @@ func (s *MemberService) AdjustSessions(ctx context.Context, userID, memberPackag
 		return tx.Model(&model.MemberPackage{}).Where("id = ?", mp.ID).Updates(updates).Error
 	})
 	if err != nil {
+		if ae, ok := err.(*errs.AppError); ok {
+			return nil, ae
+		}
 		return nil, errs.Server(err, "调整失败")
 	}
 	var updated model.MemberPackage
@@ -122,26 +135,4 @@ func (s *MemberService) MemberPackagesAdmin(ctx context.Context, userID int64) (
 	var rows []model.MemberPackage
 	err := s.db.WithContext(ctx).Where("user_id = ?", userID).Order("id DESC").Find(&rows).Error
 	return rows, err
-}
-
-func fmtInt64(n int64) string {
-	if n == 0 {
-		return "0"
-	}
-	neg := n < 0
-	if neg {
-		n = -n
-	}
-	var buf [20]byte
-	i := len(buf)
-	for n > 0 {
-		i--
-		buf[i] = byte('0' + n%10)
-		n /= 10
-	}
-	if neg {
-		i--
-		buf[i] = '-'
-	}
-	return string(buf[i:])
 }

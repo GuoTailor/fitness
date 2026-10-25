@@ -11,3 +11,13 @@
 .footer-bar-space { height: 130rpx; }
 .footer-bar { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; padding: 16rpx 24rpx calc(16rpx + env(safe-area-inset-bottom)); }
 .save-btn { background: #00b578; color: #fff; border-radius: 44rpx; }
+
+/* 请假管理 */
+.leave-card { background: #fff; border-radius: 16rpx; padding: 24rpx; margin: 24rpx 0; }
+.section-title { font-size: 30rpx; font-weight: 600; margin-bottom: 12rpx; }
+.tip2 { font-size: 22rpx; color: #999; margin-bottom: 16rpx; }
+.leave-form { display: flex; align-items: center; gap: 12rpx; flex-wrap: wrap; }
+.lf-item { background: #f5f6f8; border-radius: 10rpx; padding: 10rpx 20rpx; font-size: 26rpx; }
+.lf-btn { margin-left: auto; }
+.leave { display: flex; justify-content: space-between; align-items: center; padding: 16rpx 0; border-bottom: 1rpx solid #f5f5f5; font-size: 26rpx; }
+.empty-inline { font-size: 24rpx; color: #bbb; padding: 16rpx 0; }

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
@@ -14,6 +15,13 @@ type AdminBookingHandler struct {
 	db      *gorm.DB
 	booking *service.BookingService
 	verify  *service.VerifyService
+	audit   *service.AuditService
+}
+
+// WithAudit 装配操作审计（代客操作留痕）
+func (h *AdminBookingHandler) WithAudit(a *service.AuditService) *AdminBookingHandler {
+	h.audit = a
+	return h
 }
 
 func NewAdminBookingHandler(db *gorm.DB, b *service.BookingService, v *service.VerifyService) *AdminBookingHandler {
@@ -105,6 +113,8 @@ func (h *AdminBookingHandler) CreateForUser(c *gin.Context) {
 		resp.Handle(c, err)
 		return
 	}
+	h.audit.Log(c, "booking.proxy", "booking", booking.ID,
+		fmt.Sprintf("代客预约：学员 %d 教练 %d %s %d", req.UserID, req.CoachID, req.Date, req.StartMinute))
 	resp.OK(c, booking)
 }
 
@@ -135,5 +145,7 @@ func (h *AdminBookingHandler) Verify(c *gin.Context) {
 		resp.Handle(c, err)
 		return
 	}
+	h.audit.Log(c, "verify.proxy", "verification", 0,
+		fmt.Sprintf("前台代核销 %s（%s，重复=%v）", req.Code, result["userName"], result["alreadyVerified"]))
 	resp.OK(c, result)
 }

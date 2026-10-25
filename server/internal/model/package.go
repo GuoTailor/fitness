@@ -40,10 +40,14 @@ type PackageSKU struct {
 	Price         int64     `json:"price"`         // 分
 	OriginalPrice int64     `json:"originalPrice"` // 分
 	NewcomerPrice *int64    `json:"newcomerPrice"` // P1 预留
-	Status        int8      `gorm:"default:1;index:idx_sku_pkg" json:"status"`
-	Sort          int       `json:"sort"`
-	CreatedAt     time.Time `json:"createdAt"`
-	UpdatedAt     time.Time `json:"updatedAt"`
+	// 限时活动价（P1）：三列同时设置且当前时间落在 [start, end) 内才生效
+	PromoPrice *int64     `json:"promoPrice"`
+	PromoStart *time.Time `json:"promoStart"`
+	PromoEnd   *time.Time `json:"promoEnd"`
+	Status     int8       `gorm:"default:1;index:idx_sku_pkg" json:"status"`
+	Sort       int        `json:"sort"`
+	CreatedAt  time.Time  `json:"createdAt"`
+	UpdatedAt  time.Time  `json:"updatedAt"`
 }
 
 func (PackageSKU) TableName() string { return "package_sku" }

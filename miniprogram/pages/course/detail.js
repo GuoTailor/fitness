@@ -8,9 +8,11 @@ Page({
     selectedSku: -1,
     coupons: [],       // 当前 SKU 可用券（后端已按门槛/范围过滤）
     couponIndex: -1,   // -1=不使用优惠券
-    payYuan: '',       // 预估合计（新人价与券取低，最终以下单服务端为准）
+    payYuan: '',       // 预估合计（新人价/活动价与券取低，最终以下单服务端为准）
     buying: false,
     reviewTab: 'reviews',
+    // 问答
+    qaList: [], qaTotal: 0, askOpen: false, askContent: '', askAnonymous: false, asking: false,
   },
 
   onLoad(query) {
@@ -20,24 +22,107 @@ Page({
 
   async load() {
     const data = await request({ url: `/api/v1/packages/${this.data.id}` })
-    // 价格分转元展示；新人价仅对可享用户展示（服务端判定）
+    // 价格分转元展示；新人价仅对可享用户展示、活动价仅活动期内展示（均服务端判定）
     data.skus.forEach((s) => {
       s.priceYuan = (s.price / 100).toFixed(0)
-      if (s.newcomerPrice && s.newcomerEligible) {
-        s.newcomerYuan = (s.newcomerPrice / 100).toFixed(0)
+      const promo = s.promoActive && s.promoPrice ? s.promoPrice : 0
+      const nc = s.newcomerEligible && s.newcomerPrice ? s.newcomerPrice : 0
+      if (nc && (!promo || nc < promo)) {
+        s.newcomerYuan = (nc / 100).toFixed(0)
+      }
+      // 主展示价：新人价更低用新人价，否则活动价（同额展示活动价，与结算规则一致）
+      if (s.newcomerYuan) {
+        s.dispYuan = s.newcomerYuan
+        s.dispTag = '新人价'
+      } else if (promo) {
+        s.dispYuan = (promo / 100).toFixed(0)
+        s.dispTag = '限时价'
       }
     })
     this.setData({ detail: data, selectedSku: data.skus.length === 1 ? 0 : -1 })
     if (data.skus.length === 1) this.loadCoupons(data.skus[0].id)
+    this.startCountdown()
+  },
+
+  onShow() { this.startCountdown() },
+  onHide() { this.stopCountdown() },
+  onUnload() { this.stopCountdown() },
+
+  // 活动价倒计时（选中规格活动生效时展示）
+  startCountdown() {
+    this.stopCountdown()
+    const tick = () => {
+      const { detail, selectedSku } = this.data
+      const sku = detail && detail.skus && selectedSku >= 0 ? detail.skus[selectedSku] : null
+      if (!sku || !sku.promoActive || !sku.promoEnd) {
+        if (this.data.promoLeft) this.setData({ promoLeft: '' })
+        return
+      }
+      const left = new Date(sku.promoEnd).getTime() - Date.now()
+      if (left <= 0) {
+        this.setData({ promoLeft: '' })
+        return
+      }
+      const d = Math.floor(left / 86400000)
+      const h = String(Math.floor((left % 86400000) / 3600000)).padStart(2, '0')
+      const m = String(Math.floor((left % 3600000) / 60000)).padStart(2, '0')
+      const sec = String(Math.floor((left % 60000) / 1000)).padStart(2, '0')
+      this.setData({ promoLeft: (d > 0 ? d + '天' : '') + h + ':' + m + ':' + sec })
+    }
+    tick()
+    this._promoTimer = setInterval(tick, 1000)
+  },
+  stopCountdown() {
+    if (this._promoTimer) {
+      clearInterval(this._promoTimer)
+      this._promoTimer = null
+    }
   },
 
   onSku(e) {
     this.setData({ selectedSku: Number(e.currentTarget.dataset.index) })
     const sku = this.data.detail.skus[this.data.selectedSku]
     this.loadCoupons(sku.id)
+    this.startCountdown()
   },
   onTab(e) {
     this.setData({ reviewTab: e.currentTarget.dataset.tab })
+    if (e.currentTarget.dataset.tab === 'qa' && !this.data.qaList.length) this.loadQa()
+  },
+
+  // ---- 课程问答 ----
+  async loadQa() {
+    try {
+      const data = await request({ url: `/api/v1/packages/${this.data.id}/qa?page=1&pageSize=20` })
+      const list = (data.list || []).map((q) => {
+        q.timeText = String(q.createdAt || '').replace('T', ' ').slice(0, 16)
+        ;(q.answers || []).forEach((a) => {
+          a.timeText = String(a.createdAt || '').replace('T', ' ').slice(0, 16)
+        })
+        return q
+      })
+      this.setData({ qaList: list, qaTotal: data.total || 0 })
+    } catch (e) { /* 静默：问答加载失败不阻塞详情 */ }
+  },
+  onToggleAsk() { this.setData({ askOpen: !this.data.askOpen }) },
+  onAskInput(e) { this.setData({ askContent: e.detail.value }) },
+  onAskAnon(e) { this.setData({ askAnonymous: e.detail.value }) },
+  async onSubmitAsk() {
+    const app2 = app
+    await app2.ensureLogin()
+    if (this.data.askContent.trim().length < 5) {
+      return wx.showToast({ title: '问题至少 5 个字', icon: 'none' })
+    }
+    this.setData({ asking: true })
+    try {
+      await request({
+        url: '/api/v1/qa/questions', method: 'POST',
+        data: { packageId: Number(this.data.id), content: this.data.askContent.trim(), anonymous: this.data.askAnonymous },
+      })
+      wx.showToast({ title: '已提交', icon: 'success' })
+      this.setData({ askOpen: false, askContent: '', askAnonymous: false })
+      this.loadQa()
+    } catch (e) { /* toast 已处理 */ } finally { this.setData({ asking: false }) }
   },
   onCoach(e) {
     wx.navigateTo({ url: '/pages/coach/detail?id=' + e.currentTarget.dataset.id })
@@ -60,7 +145,7 @@ Page({
       return wx.showToast({ title: '该课包暂无可用券，可去领券中心看看', icon: 'none' })
     }
     const items = ['不使用优惠券'].concat(
-      coupons.map((c) => `${c.name} ${c.label}（省¥${c.benefitYuan}）`))
+      coupons.map((c) => `${c.name} ${c.label}${c.giftSessions ? '' : `（省¥${c.benefitYuan}）`}`))
     wx.showActionSheet({
       itemList: items,
       success: (r) => {
@@ -81,8 +166,10 @@ Page({
     }
     const sku = detail.skus[selectedSku]
     let pay = sku.price
-    if (couponIndex >= 0 && coupons[couponIndex]) pay = coupons[couponIndex].finalPay
+    const c = couponIndex >= 0 ? coupons[couponIndex] : null
+    if (c && !c.giftSessions) pay = c.finalPay // 赠课券不降价
     if (sku.newcomerEligible && sku.newcomerPrice && sku.newcomerPrice < pay) pay = sku.newcomerPrice
+    if (sku.promoActive && sku.promoPrice && sku.promoPrice < pay) pay = sku.promoPrice
     this.setData({ payYuan: (pay / 100).toFixed(2) })
   },
 

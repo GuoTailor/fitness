@@ -1,9 +1,28 @@
 <view class="page">
-  <view class="profile" wx:if="{{user}}">
+  <view class="profile" wx:if="{{user && !editing}}">
     <image class="avatar" src="{{user.avatarUrl || '/assets/avatar-default.png'}}" mode="aspectFill" />
     <view class="info">
       <view class="nickname">{{user.nickname || '学员'}}</view>
       <view class="sub">{{user.phone || '未绑定手机号'}}</view>
+    </view>
+    <view class="edit-entry" bindtap="onEditProfile">编辑资料 ›</view>
+  </view>
+
+  <view class="card edit-card" wx:if="{{user && editing}}">
+    <view class="edit-title">编辑资料</view>
+    <view class="edit-row">
+      <button class="avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
+        <image class="avatar avatar-edit" src="{{editAvatar || user.avatarUrl || '/assets/avatar-default.png'}}" mode="aspectFill" />
+        <view class="avatar-tip">点击换头像</view>
+      </button>
+    </view>
+    <view class="edit-row">
+      <text class="edit-label">昵称</text>
+      <input class="edit-input" type="nickname" value="{{editNickname}}" placeholder="请输入昵称" bindinput="onEditNickname" bindblur="onEditNickname" />
+    </view>
+    <view class="edit-btns">
+      <button size="mini" bindtap="onCancelEdit">取消</button>
+      <button size="mini" class="edit-save" disabled="{{savingProfile}}" bindtap="onSaveProfile">{{savingProfile ? '保存中…' : '保存'}}</button>
     </view>
   </view>
   <view class="card login-card" wx:else>
@@ -20,6 +39,7 @@
     <navigator class="menu-item coupon-entry" url="/pages/coupon/center">领券中心 ›</navigator>
     <navigator class="menu-item" url="/pages/review/create">待评价课程</navigator>
     <navigator class="menu-item" url="/pages/review/list">我的评价</navigator>
+    <navigator class="menu-item" url="/pages/qa/mine">我的提问</navigator>
     <button wx:if="{{!user.phone}}" class="menu-btn" open-type="getPhoneNumber" bindgetphonenumber="onGetPhone" loading="{{phoneBinding}}">
       绑定手机号
     </button>

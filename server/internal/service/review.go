@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"log"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,9 +19,10 @@ import (
 // uk_review(verification_id, target_type) 防重复提交。
 // 默认待审核，后台通过后对外可见；教练维度通过/隐藏时刷新 coach 评分聚合。
 type ReviewService struct {
-	db            *gorm.DB
-	cfg           *ConfigService
-	uploadPrefixes []string // 图片链接合法前缀（本站上传），默认 /uploads/
+	db             *gorm.DB
+	cfg            *ConfigService
+	uploadPrefixes []string          // 图片链接合法前缀（本站上传），默认 /uploads/
+	coupons        *CouponService    // 评价奖励发券（配置 marketing.review_reward_template）
 }
 
 func NewReviewService(db *gorm.DB, cfg *ConfigService) *ReviewService {
@@ -34,6 +37,32 @@ func (s *ReviewService) WithUploadPrefixes(ps ...string) *ReviewService {
 		}
 	}
 	return s
+}
+
+// WithRewardCoupons 装配评价奖励发券
+func (s *ReviewService) WithRewardCoupons(c *CouponService) *ReviewService {
+	s.coupons = c
+	return s
+}
+
+// rewardForReview 评价奖励发券：配置了奖励模板且评价通过后发放；
+// 未配置/超限/停发一律静默跳过（记日志），绝不影响评价主流程。
+// 重复发放由券模板的每人限领天然控制。
+func (s *ReviewService) rewardForReview(ctx context.Context, userID int64) {
+	if s.coupons == nil || s.cfg == nil {
+		return
+	}
+	idStr := strings.TrimSpace(s.cfg.Get(ctx, model.CfgReviewRewardTemplate, ""))
+	if idStr == "" {
+		return
+	}
+	tid, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil || tid <= 0 {
+		return
+	}
+	if _, err := s.coupons.Claim(ctx, userID, tid); err != nil {
+		log.Printf("[review] 评价奖励发券 user=%d tpl=%d 跳过: %v", userID, tid, err)
+	}
 }
 
 // Reviewable 待评价列表：已核销且未评价（近 50 条），带课程名/教练名。
@@ -177,6 +206,9 @@ func (s *ReviewService) Submit(ctx context.Context, userID, verificationID int64
 	if status == model.ReviewStatusApproved && v.CoachID > 0 {
 		s.RefreshCoachRating(ctx, v.CoachID)
 	}
+	if status == model.ReviewStatusApproved {
+		s.rewardForReview(ctx, userID) // 免审模式：提交即通过，直接发奖励券
+	}
 	return nil
 }
 
@@ -303,6 +335,10 @@ func (s *ReviewService) Audit(ctx context.Context, reviewID int64, action string
 	}
 	if r.TargetType == model.ReviewTargetCoach && r.CoachID > 0 {
 		s.RefreshCoachRating(ctx, r.CoachID)
+	}
+	// 评价奖励：以课包维度审核通过为准（一次提交两条记录，避免双发）
+	if action == "approve" && r.TargetType == model.ReviewTargetPackage {
+		s.rewardForReview(ctx, r.UserID)
 	}
 	return nil
 }

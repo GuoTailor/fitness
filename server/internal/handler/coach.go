@@ -38,6 +38,52 @@ func NewCoachHandler(db *gorm.DB, b *service.BookingService, g *service.GroupSer
 	return &CoachHandler{db: db, booking: b, group: g, verify: v, owner: owner}
 }
 
+// ---- 教练请假 ----
+
+// Leaves GET /coach/leaves?from=&to=
+func (h *CoachHandler) Leaves(c *gin.Context) {
+	leaves, err := h.booking.LeavesOf(c.Request.Context(), middleware.CoachID(c), c.Query("from"), c.Query("to"))
+	if err != nil {
+		resp.Handle(c, err)
+		return
+	}
+	resp.OK(c, leaves)
+}
+
+// AddLeave POST /coach/leaves {date,startMinute,endMinute,reason}
+func (h *CoachHandler) AddLeave(c *gin.Context) {
+	var req struct {
+		Date        string `json:"date" binding:"required"`
+		StartMinute int    `json:"startMinute"`
+		EndMinute   int    `json:"endMinute"`
+		Reason      string `json:"reason"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.Handle(c, service.BadParamJSON())
+		return
+	}
+	leave, affected, err := h.booking.AddLeave(c.Request.Context(), middleware.CoachID(c),
+		req.Date, req.StartMinute, req.EndMinute, req.Reason)
+	if err != nil {
+		resp.Handle(c, err)
+		return
+	}
+	resp.OK(c, gin.H{"leave": leave, "affectedBookings": affected})
+}
+
+// CancelLeave DELETE /coach/leaves/:id
+func (h *CoachHandler) CancelLeave(c *gin.Context) {
+	id, ok := idParam(c, "id")
+	if !ok {
+		return
+	}
+	if err := h.booking.CancelLeave(c.Request.Context(), middleware.CoachID(c), id); err != nil {
+		resp.Handle(c, err)
+		return
+	}
+	resp.OK(c, gin.H{"deleted": true})
+}
+
 // Schedule GET /coach/schedule
 func (h *CoachHandler) Schedule(c *gin.Context) {
 	var rows []model.CoachSchedule

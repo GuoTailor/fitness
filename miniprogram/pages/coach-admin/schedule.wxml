@@ -16,6 +16,30 @@
       <text class="del" bindtap="removeWindow" data-wd="{{day.weekday}}" data-idx="{{idx}}">删除</text>
     </view>
   </view>
+
+  <view class="card leave-card">
+    <view class="section-title">请假管理</view>
+    <view class="tip2">请假时段学员不可预约；已产生的预约请线下协商改期（系统不自动取消）</view>
+    <view class="leave-form">
+      <picker mode="date" value="{{leaveDate}}" start="{{leaveDates[0]}}" bindchange="onLeaveDate">
+        <view class="lf-item">{{leaveDate}}</view>
+      </picker>
+      <picker mode="time" value="{{leaveStart}}" bindchange="onLeaveStart">
+        <view class="lf-item">{{leaveStart}}</view>
+      </picker>
+      <text class="sep">至</text>
+      <picker mode="time" value="{{leaveEnd}}" bindchange="onLeaveEnd">
+        <view class="lf-item">{{leaveEnd}}</view>
+      </picker>
+      <button class="lf-btn" size="mini" bindtap="onAddLeave">登记</button>
+    </view>
+    <view class="leave" wx:for="{{leaves}}" wx:key="id">
+      <text>{{item.leaveDate}} {{item.fullDay ? '全天' : item.rangeText}}</text>
+      <text class="del" bindtap="onRemoveLeave" data-id="{{item.id}}">撤销</text>
+    </view>
+    <view class="empty-inline" wx:if="{{!leaves.length}}">暂无请假记录</view>
+  </view>
+
   <view class="footer-bar-space"></view>
   <view class="footer-bar">
     <button class="save-btn" disabled="{{saving}}" bindtap="onSave">{{saving ? '保存中…' : '保存模板'}}</button>

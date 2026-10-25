@@ -42,4 +42,6 @@ Page({
   goSchedule() { wx.navigateTo({ url: '/pages/coach-admin/schedule' }) },
   goGroups() { wx.navigateTo({ url: '/pages/coach-admin/groups' }) },
   goReviews() { wx.navigateTo({ url: '/pages/coach-admin/reviews' }) },
+  goFeedback() { wx.navigateTo({ url: '/pages/coach-admin/feedback' }) },
+  goQa() { wx.navigateTo({ url: '/pages/coach-admin/qa' }) },
 })

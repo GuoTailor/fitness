@@ -33,6 +33,24 @@ func (h *MeHandler) Me(c *gin.Context) {
 	})
 }
 
+// UpdateMe PUT /api/v1/me {nickname, avatarUrl} 个人资料编辑
+func (h *MeHandler) UpdateMe(c *gin.Context) {
+	var req struct {
+		Nickname  string `json:"nickname" binding:"required"`
+		AvatarURL string `json:"avatarUrl"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.Handle(c, service.BadParamJSON())
+		return
+	}
+	user, err := service.UpdateUserProfile(c.Request.Context(), h.db, middleware.UserID(c), req.Nickname, req.AvatarURL)
+	if err != nil {
+		resp.Handle(c, err)
+		return
+	}
+	resp.OK(c, user)
+}
+
 // Ping GET /healthz 无需登录，用于探活
 func Ping(c *gin.Context) {
 	c.JSON(200, gin.H{"code": 0, "msg": "pong", "data": gin.H{"service": "fitness-server"}})

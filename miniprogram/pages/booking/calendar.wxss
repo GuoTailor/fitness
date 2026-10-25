@@ -10,3 +10,7 @@
 .a { border: 2rpx solid #ddd; color: #666; border-radius: 26rpx; }
 .a-main { border-color: #00b578; color: #00b578; background: #f0faf6; }
 .empty { text-align: center; color: #999; padding: 80rpx 0; }
+
+/* 候补按钮 */
+.a.wl { background: #fff7e6; color: #d48806; border: 1rpx solid #ffd666; }
+.a.wl-on { background: #f0f9eb; color: #67c23a; border: 1rpx solid #b3e19d; }

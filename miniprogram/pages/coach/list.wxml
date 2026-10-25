@@ -2,6 +2,11 @@
   <view class="search">
     <input class="search-input" placeholder="搜索教练" value="{{keyword}}" bindinput="onKeyword" bindconfirm="onSearch" confirm-type="search" />
   </view>
+  <view class="rating-chips">
+    <view wx:for="{{ratingChips}}" wx:key="value"
+      class="chip {{minRating === item.value ? 'chip-active' : ''}}"
+      bindtap="onRatingChip" data-value="{{item.value}}">{{item.label}}</view>
+  </view>
   <view class="list">
     <view class="coach" wx:for="{{list}}" wx:key="id" bindtap="onCoach" data-id="{{item.id}}">
       <image class="avatar" src="{{item.avatarUrl || '/assets/avatar-default.png'}}" mode="aspectFill" />

@@ -1,0 +1,22 @@
+<view class="page">
+  <view class="tip">对已核销课程填写训练反馈（动作要点/下次计划），学员在「训练跟踪」中可见</view>
+
+  <view wx:if="{{editing}}" class="editor">
+    <textarea class="ta" value="{{content}}" maxlength="1000" placeholder="训练反馈（1000 字内），如：深蹲动作标准，下次加强核心与髋关节灵活性…" bindinput="onInput" />
+    <view class="ed-btns">
+      <button size="mini" bindtap="onCancel">取消</button>
+      <button size="mini" class="primary" bindtap="onSave">保存反馈</button>
+    </view>
+  </view>
+
+  <view class="item" wx:for="{{list}}" wx:key="verificationId">
+    <view class="item-head">
+      <text class="name">{{item.userName || '学员 #' + item.verificationId}}</text>
+      <text class="meta">{{item.typeText}} · {{item.dateText}}</text>
+    </view>
+    <view class="fb" wx:if="{{item.written}}">{{item.feedback.content}}</view>
+    <view class="fb none" wx:else>未填写</view>
+    <view class="op" bindtap="onWrite" data-id="{{item.verificationId}}">{{item.written ? '修订' : '填写反馈'}} ›</view>
+  </view>
+  <view class="empty" wx:if="{{!list.length}}">暂无已核销课程</view>
+</view>

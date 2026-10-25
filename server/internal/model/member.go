@@ -24,6 +24,7 @@ type MemberPackage struct {
 	UsedSessions  int       `json:"usedSessions"` // 冗余余额，以 package_transaction 流水为准
 	ValidDays     int       `gorm:"default:365" json:"validDays"`   // 购买时快照
 	UnitPrice     int64     `gorm:"default:0" json:"unitPrice"`     // 购买时快照：单课时折算价（分）
+	GiftSessions  int       `gorm:"default:0" json:"giftSessions"` // 赠课券赠送课时（退款折算不计入可退）
 	ExpireDate    *time.Time `gorm:"type:date" json:"expireDate"`
 	Status        string    `gorm:"size:16;default:inactive;index:idx_mp_user;index:idx_mp_expire" json:"status"`
 	ActivatedAt   *time.Time `json:"activatedAt"`
@@ -46,6 +47,7 @@ const (
 	TxnTypePenalty      = "penalty"       // 开课前取消扣次（不返还）
 	TxnTypeRefundReclaim = "refund_reclaim" // 退款回收
 	TxnTypeManualAdjust = "manual_adjust"  // 后台手动调整（赠课/补课）
+	TxnTypeGift         = "gift"           // 赠课券赠送（随订单入账）
 )
 
 // PackageTransaction 课时流水——所有课时变动的唯一入口。

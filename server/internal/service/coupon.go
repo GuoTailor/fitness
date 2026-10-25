@@ -31,10 +31,12 @@ func FenYuan(fen int64) string {
 	return fmt.Sprintf("%.2f", float64(fen)/100)
 }
 
-// TemplateLabel 券展示文案：满100减20 / 立减20 / 8.8折（限指定课包时附说明）
+// TemplateLabel 券展示文案：满100减20 / 立减20 / 8.8折 / 购课赠2课时（限指定课包时附说明）
 func TemplateLabel(t *model.CouponTemplate) string {
 	var label string
 	switch t.Type {
+	case model.CouponTypeGift:
+		label = fmt.Sprintf("购课赠%d课时", t.Amount)
 	case model.CouponTypeDiscount:
 		label = fmt.Sprintf("%s折", strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.1f", float64(t.Amount)/100), "0"), "."))
 	default:
@@ -195,6 +197,15 @@ func (s *CouponService) UsableForSku(ctx context.Context, userID, skuID int64) (
 		if tpl.PackageID != 0 && tpl.PackageID != sku.PackageID {
 			continue
 		}
+		// 赠课券：不降价（benefit=0），下单绑券后随入账赠课时
+		if tpl.Type == model.CouponTypeGift {
+			delete(it, "_tpl")
+			it["benefit"] = int64(0)
+			it["finalPay"] = sku.Price
+			it["giftSessions"] = tpl.Amount
+			out = append(out, it)
+			continue
+		}
 		benefit := CouponBenefit(tpl, sku.Price)
 		if benefit <= 0 {
 			continue // 未达门槛
@@ -243,23 +254,40 @@ func (s *CouponService) enrich(ctx context.Context, ucs []model.UserCoupon) []ma
 	return out
 }
 
-// ApplyCouponForOrder 订单事务内核销券：usable→used 绑定订单（条件更新幂等），
-// 返回实付优惠额。所有校验以事务内数据为准，任何不满足即整体回滚（订单不落库）。
-func ApplyCouponForOrder(tx *gorm.DB, userID, couponID, orderID, packageID, skuPrice int64) (int64, error) {
+// ApplyCouponForOrder 订单事务内核销券：usable→used 绑定订单（条件更新幂等）。
+// 金额类券返回实付优惠额；赠课券不降价（优惠额 0），返回赠送课时数供订单快照。
+// 所有校验以事务内数据为准，任何不满足即整体回滚（订单不落库）。
+func ApplyCouponForOrder(tx *gorm.DB, userID, couponID, orderID, packageID, skuPrice int64) (benefit int64, giftSessions int, err error) {
 	var uc model.UserCoupon
-	if err := tx.Where("id = ? AND user_id = ?", couponID, userID).First(&uc).Error; err != nil {
-		return 0, errs.Biz("优惠券不存在")
+	if err = tx.Where("id = ? AND user_id = ?", couponID, userID).First(&uc).Error; err != nil {
+		return 0, 0, errs.Biz("优惠券不存在")
 	}
 	var tpl model.CouponTemplate
-	if err := tx.First(&tpl, uc.TemplateID).Error; err != nil {
-		return 0, errs.Biz("优惠券信息异常")
+	if err = tx.First(&tpl, uc.TemplateID).Error; err != nil {
+		return 0, 0, errs.Biz("优惠券信息异常")
 	}
 	if tpl.PackageID != 0 && tpl.PackageID != packageID {
-		return 0, errs.Biz("该优惠券不适用于此课包")
+		return 0, 0, errs.Biz("该优惠券不适用于此课包")
 	}
-	benefit := CouponBenefit(&tpl, skuPrice)
+	if tpl.Type == model.CouponTypeGift {
+		// 赠课券：直接绑单（无门槛判断），优惠额 0、赠送课时随返回
+		res := tx.Model(&model.UserCoupon{}).
+			Where("id = ? AND user_id = ? AND status = ? AND expire_at > ?",
+				couponID, userID, model.CouponUsable, time.Now()).
+			Updates(map[string]interface{}{
+				"status": model.CouponUsed, "order_id": orderID, "used_at": time.Now(),
+			})
+		if res.Error != nil {
+			return 0, 0, res.Error
+		}
+		if res.RowsAffected == 0 {
+			return 0, 0, errs.Biz("优惠券不可用或已过期")
+		}
+		return 0, int(tpl.Amount), nil
+	}
+	benefit = CouponBenefit(&tpl, skuPrice)
 	if benefit <= 0 {
-		return 0, errs.Biz("订单金额未满足用券条件")
+		return 0, 0, errs.Biz("订单金额未满足用券条件")
 	}
 	res := tx.Model(&model.UserCoupon{}).
 		Where("id = ? AND user_id = ? AND status = ? AND expire_at > ?",
@@ -268,12 +296,12 @@ func ApplyCouponForOrder(tx *gorm.DB, userID, couponID, orderID, packageID, skuP
 			"status": model.CouponUsed, "order_id": orderID, "used_at": time.Now(),
 		})
 	if res.Error != nil {
-		return 0, res.Error
+		return 0, 0, res.Error
 	}
 	if res.RowsAffected == 0 {
-		return 0, errs.Biz("优惠券不可用或已过期")
+		return 0, 0, errs.Biz("优惠券不可用或已过期")
 	}
-	return benefit, nil
+	return benefit, 0, nil
 }
 
 // returnCouponOnRefund 退款终态返还券：仍在有效期 → usable 可再用；已过期 → expired（留痕）。
@@ -300,16 +328,22 @@ func ValidateTemplate(t *model.CouponTemplate) error {
 	if strings.TrimSpace(t.Name) == "" {
 		return errs.BadParam("券名称不能为空")
 	}
-	if t.Type != model.CouponTypeReduce && t.Type != model.CouponTypeDiscount {
-		return errs.BadParam("券类型仅支持 reduce/discount")
+	if t.Type != model.CouponTypeReduce && t.Type != model.CouponTypeDiscount && t.Type != model.CouponTypeGift {
+		return errs.BadParam("券类型仅支持 reduce/discount/gift")
 	}
 	if t.Threshold < 0 {
 		return errs.BadParam("用券门槛不能为负数")
 	}
-	if t.Type == model.CouponTypeReduce && (t.Amount <= 0 || t.Amount > 10_000_000) {
+	if t.Type == model.CouponTypeGift {
+		if t.Threshold != 0 {
+			return errs.BadParam("赠课券无需使用门槛")
+		}
+		if t.Amount < 1 || t.Amount > 10 {
+			return errs.BadParam("赠课券需赠送 1~10 课时")
+		}
+	} else if t.Type == model.CouponTypeReduce && (t.Amount <= 0 || t.Amount > 10_000_000) {
 		return errs.BadParam("满减券金额需在 1 分 ~ 10 万元之间")
-	}
-	if t.Type == model.CouponTypeDiscount && (t.Amount < 1000 || t.Amount > 9900) {
+	} else if t.Type == model.CouponTypeDiscount && (t.Amount < 1000 || t.Amount > 9900) {
 		return errs.BadParam("折扣率需在 9 折 ~ 1 折之间（1000~9900 万分比）")
 	}
 	if t.ValidDays <= 0 || t.ValidDays > 3650 {

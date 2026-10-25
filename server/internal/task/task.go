@@ -9,6 +9,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -20,19 +22,21 @@ import (
 )
 
 type Runner struct {
-	db     *gorm.DB
-	cfg    *service.ConfigService
-	notify *service.NotifyService
-	orders *service.OrderService
+	db      *gorm.DB
+	cfg     *service.ConfigService
+	notify  *service.NotifyService
+	orders  *service.OrderService
+	coupons *service.CouponService
 }
 
 func NewRunner(db *gorm.DB, mp wechat.MiniProgram, notifyCfg config.NotifyConfig, pay wechat.PaymentProvider) *Runner {
 	cfg := service.NewConfigService(db)
 	return &Runner{
-		db:     db,
-		cfg:    cfg,
-		notify: service.NewNotifyService(db, mp, notifyCfg.Mock, notifyCfg.Templates),
-		orders: service.NewOrderService(db, cfg, pay),
+		db:      db,
+		cfg:     cfg,
+		notify:  service.NewNotifyService(db, mp, notifyCfg.Mock, notifyCfg.Templates),
+		orders:  service.NewOrderService(db, cfg, pay),
+		coupons: service.NewCouponService(db),
 	}
 }
 
@@ -127,6 +131,7 @@ func (r *Runner) MemberWarnings(ctx context.Context) (int, error) {
 			return sent, err
 		}
 		for _, mp := range mps {
+			r.tryRenewalCoupon(ctx, mp.UserID)
 			ok, err := r.notify.Send(ctx, mp.UserID, model.NotifySceneSessionsWarning, mp.ID,
 				map[string]string{"thing1": fmt.Sprintf("课时仅剩 %d 节，及时续课哦", mp.RemainingSessions())})
 			if err != nil {
@@ -165,6 +170,22 @@ func (r *Runner) MemberWarnings(ctx context.Context) (int, error) {
 		}
 	}
 	return sent, nil
+}
+
+// tryRenewalCoupon 续费提醒券：配置了 marketing.renewal_reminder_template 时随课时不足
+// 预警自动发放；未配置/已领过（每人限领）/停发一律静默跳过——首次预警发券、后续不重发。
+func (r *Runner) tryRenewalCoupon(ctx context.Context, userID int64) {
+	idStr := strings.TrimSpace(r.cfg.Get(ctx, model.CfgRenewalReminderTemplate, ""))
+	if idStr == "" {
+		return
+	}
+	tid, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil || tid <= 0 {
+		return
+	}
+	if _, err := r.coupons.Claim(ctx, userID, tid); err == nil {
+		log.Printf("[task] 续费提醒券已发放 user=%d tpl=%d", userID, tid)
+	}
 }
 
 // CloseExpiredOrders 超时关单（M2）：挂单 2 小时未支付关闭，旧价订单不可无限期支付；

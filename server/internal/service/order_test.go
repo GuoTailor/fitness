@@ -27,6 +27,7 @@ func setupOrderDB(t *testing.T) *gorm.DB {
 		&model.Order{}, &model.Payment{}, &model.Refund{},
 		&model.MemberPackage{}, &model.PackageTransaction{}, &model.AppConfig{},
 		&model.CouponTemplate{}, &model.UserCoupon{},
+		&model.Verification{}, &model.Review{}, &model.NotifyLog{},
 	))
 	// Prepay 服务端取 openid（E2），测试需预置用户
 	for i := int64(1); i <= 5; i++ {
@@ -240,20 +241,20 @@ func TestManualAdjust(t *testing.T) {
 	var mp model.MemberPackage
 	d.Where("order_id = ?", order.ID).First(&mp)
 
-	updated, err := memberSvc.AdjustSessions(ctx, 5, mp.ID, 2, "开业赠送", "admin")
+	updated, err := memberSvc.AdjustSessions(ctx, 5, mp.ID, 2, "开业赠送", "admin", "")
 	require.NoError(t, err)
 	assert.Equal(t, 12, updated.TotalSessions)
 	assert.Equal(t, 0, updated.UsedSessions)
 
-	updated, err = memberSvc.AdjustSessions(ctx, 5, mp.ID, -1, "扣课", "admin")
+	updated, err = memberSvc.AdjustSessions(ctx, 5, mp.ID, -1, "扣课", "admin", "")
 	require.NoError(t, err)
 	assert.Equal(t, 12, updated.TotalSessions)
 	assert.Equal(t, 1, updated.UsedSessions)
 
 	// 调整数量为 0 拒绝
-	_, err = memberSvc.AdjustSessions(ctx, 5, mp.ID, 0, "x", "admin")
+	_, err = memberSvc.AdjustSessions(ctx, 5, mp.ID, 0, "x", "admin", "")
 	assert.Error(t, err)
 	// 他人课包不可调整（隔离）
-	_, err = memberSvc.AdjustSessions(ctx, 999, mp.ID, 1, "x", "admin")
+	_, err = memberSvc.AdjustSessions(ctx, 999, mp.ID, 1, "x", "admin", "")
 	assert.Error(t, err)
 }

@@ -85,6 +85,7 @@ func (s *GroupService) ListBetween(ctx context.Context, from, to string, userID 
 	coaches := map[int64]model.Coach{}
 	pkgs := map[int64]model.CoursePackage{}
 	myStatus := map[int64]string{}
+	myWaitlist := map[int64]bool{}
 	if len(cids) > 0 {
 		var cs []model.Coach
 		s.db.WithContext(ctx).Where("id IN ?", coachIDsOf(classes)).Find(&cs)
@@ -102,13 +103,20 @@ func (s *GroupService) ListBetween(ctx context.Context, from, to string, userID 
 			for _, ge := range ges {
 				myStatus[ge.GroupClassID] = ge.Status
 			}
+			var wls []model.GroupWaitlist
+			s.db.WithContext(ctx).
+				Where("user_id = ? AND group_class_id IN ? AND status = ?", userID, cids, model.WLStatusWaiting).
+				Find(&wls)
+			for _, wl := range wls {
+				myWaitlist[wl.GroupClassID] = true
+			}
 		}
 	}
 	out := make([]map[string]interface{}, 0, len(classes))
 	for _, g := range classes {
 		out = append(out, map[string]interface{}{
 			"class": g, "coachName": coaches[g.CoachID].Name, "coachAvatar": coaches[g.CoachID].AvatarURL,
-			"packageTitle": pkgs[g.PackageID].Title, "myStatus": myStatus[g.ID],
+			"packageTitle": pkgs[g.PackageID].Title, "myStatus": myStatus[g.ID], "waitlisted": myWaitlist[g.ID],
 		})
 	}
 	return out, nil
@@ -148,15 +156,22 @@ func (s *GroupService) Detail(ctx context.Context, classID, userID int64) (map[s
 	var pkg model.CoursePackage
 	s.db.WithContext(ctx).First(&pkg, gc.PackageID)
 	myStatus := ""
+	waitlisted := false
 	if userID > 0 {
 		var ge model.GroupEnrollment
 		if err := s.db.WithContext(ctx).
 			Where("group_class_id = ? AND user_id = ?", classID, userID).First(&ge).Error; err == nil {
 			myStatus = ge.Status
 		}
+		var wl model.GroupWaitlist
+		if err := s.db.WithContext(ctx).
+			Where("group_class_id = ? AND user_id = ? AND status = ?", classID, userID, model.WLStatusWaiting).
+			First(&wl).Error; err == nil {
+			waitlisted = true
+		}
 	}
 	return map[string]interface{}{
-		"class": gc, "coach": coach, "package": pkg, "myStatus": myStatus,
+		"class": gc, "coach": coach, "package": pkg, "myStatus": myStatus, "waitlisted": waitlisted,
 	}, nil
 }
 
@@ -174,75 +189,14 @@ func (s *GroupService) Enroll(ctx context.Context, classID, userID, memberPackag
 		return nil, errs.Biz("团课已开始")
 	}
 	var mp model.MemberPackage
-	if err := s.db.WithContext(ctx).
-		Where("id = ? AND user_id = ?", memberPackageID, userID).First(&mp).Error; err != nil {
-		return nil, errs.NotFound("课时账户不存在")
-	}
-	if mp.Status != model.MPStatusInactive && mp.Status != model.MPStatusActive {
-		return nil, errs.Biz("该课包当前状态不可用")
-	}
-	if mp.ExpireDate != nil && mp.ExpireDate.Format("2006-01-02") < time.Now().Format("2006-01-02") {
-		return nil, errs.Biz("该课包已过期") // M3：状态未及时清扫时按有效期硬拒
-	}
-	if mp.PackageID != gc.PackageID {
-		return nil, errs.Biz("请使用该团课对应课包的课时报名")
-	}
-	if mp.RemainingSessions() < 1 {
-		return nil, errs.Biz("剩余课时不足")
+	if err := s.validateMpForGroup(ctx, &gc, userID, memberPackageID, &mp); err != nil {
+		return nil, err
 	}
 
 	var enrollment model.GroupEnrollment
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// 复用行（quit → enrolled）或新建；同课同人唯一。
-		// 复用时 enroll_seq+1（P0-4）：扣次/返还幂等键带世代，重报不再撞键
-		if err := tx.Where("group_class_id = ? AND user_id = ?", classID, userID).First(&enrollment).Error; err == nil {
-				if enrollment.Status == model.GEStatusEnrolled || enrollment.Status == model.GEStatusVerified {
-					return errs.Conflict("你已报名该团课")
-				}
-				nextSeq := enrollment.EnrollSeq + 1
-				res := tx.Model(&model.GroupEnrollment{}).
-					Where("id = ? AND status = ? AND enroll_seq = ?", enrollment.ID, model.GEStatusQuit, enrollment.EnrollSeq).
-					Updates(map[string]interface{}{
-						"status": model.GEStatusEnrolled, "quit_time": nil,
-						"member_package_id": memberPackageID, "enroll_seq": nextSeq,
-					})
-				if res.Error != nil {
-					return res.Error
-				}
-				if res.RowsAffected == 0 {
-					return errs.Conflict("报名状态变化，请刷新")
-				}
-				enrollment.EnrollSeq = nextSeq
-			} else {
-				enrollment = model.GroupEnrollment{
-					GroupClassID: classID, UserID: userID, MemberPackageID: memberPackageID,
-					Status: model.GEStatusEnrolled, EnrollSeq: 1,
-				}
-				if err := tx.Create(&enrollment).Error; err != nil {
-					if isDuplicateKey(err) {
-						return errs.Conflict("你已报名该团课")
-					}
-					return err
-				}
-			}
-			// 乐观锁防超卖：占位成功才算报上
-			res := tx.Model(&model.GroupClass{}).
-				Where("id = ? AND status = ? AND enrolled_count < capacity", classID, model.GCStatusEnrolling).
-				Updates(map[string]interface{}{
-					"enrolled_count": gorm.Expr("enrolled_count + 1"),
-					"status":         gorm.Expr("CASE WHEN enrolled_count + 1 >= capacity THEN 'fulfilled' ELSE 'enrolling' END"),
-				})
-			if res.Error != nil {
-				return res.Error
-			}
-			if res.RowsAffected == 0 {
-				return errs.Conflict("名额已满")
-			}
-			// 扣次（幂等键 = 报名 ID + 世代）
-			return deductOne(tx, &mp, model.TxnTypeDeduct,
-				fmt.Sprintf("group_deduct:%d:%d", enrollment.ID, enrollment.EnrollSeq),
-				"group_enrollment", enrollment.ID, "团课报名扣次")
-		})
+		return enrollInTx(tx, &enrollment, classID, userID, memberPackageID, &mp)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -251,7 +205,62 @@ func (s *GroupService) Enroll(ctx context.Context, classID, userID, memberPackag
 	return &enrollment, nil
 }
 
-// Quit 退出：开课前 ≥X 小时可退并返还课时；临近开课不可退
+// enrollInTx 事务内报名（复用行/世代 + 条件占位防超卖 + 扣次幂等）。
+// 报名与候补自动递补共用；冲突（已报名/状态变化/名额已满）返回 CodeConflict。
+func enrollInTx(tx *gorm.DB, enrollment *model.GroupEnrollment, classID, userID, memberPackageID int64, mp *model.MemberPackage) error {
+	// 复用行（quit → enrolled）或新建；同课同人唯一。
+	// 复用时 enroll_seq+1（P0-4）：扣次/返还幂等键带世代，重报不再撞键
+	if err := tx.Where("group_class_id = ? AND user_id = ?", classID, userID).First(enrollment).Error; err == nil {
+		if enrollment.Status == model.GEStatusEnrolled || enrollment.Status == model.GEStatusVerified {
+			return errs.Conflict("你已报名该团课")
+		}
+		nextSeq := enrollment.EnrollSeq + 1
+		res := tx.Model(&model.GroupEnrollment{}).
+			Where("id = ? AND status = ? AND enroll_seq = ?", enrollment.ID, model.GEStatusQuit, enrollment.EnrollSeq).
+			Updates(map[string]interface{}{
+				"status": model.GEStatusEnrolled, "quit_time": nil,
+				"member_package_id": memberPackageID, "enroll_seq": nextSeq,
+			})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return errs.Conflict("报名状态变化，请刷新")
+		}
+		enrollment.EnrollSeq = nextSeq
+	} else {
+		*enrollment = model.GroupEnrollment{
+			GroupClassID: classID, UserID: userID, MemberPackageID: memberPackageID,
+			Status: model.GEStatusEnrolled, EnrollSeq: 1,
+		}
+		if err := tx.Create(enrollment).Error; err != nil {
+			if isDuplicateKey(err) {
+				return errs.Conflict("你已报名该团课")
+			}
+			return err
+		}
+	}
+	// 乐观锁防超卖：占位成功才算报上
+	res := tx.Model(&model.GroupClass{}).
+		Where("id = ? AND status = ? AND enrolled_count < capacity", classID, model.GCStatusEnrolling).
+		Updates(map[string]interface{}{
+			"enrolled_count": gorm.Expr("enrolled_count + 1"),
+			"status":         gorm.Expr("CASE WHEN enrolled_count + 1 >= capacity THEN 'fulfilled' ELSE 'enrolling' END"),
+		})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return errs.Conflict("名额已满")
+	}
+	// 扣次（幂等键 = 报名 ID + 世代）
+	return deductOne(tx, mp, model.TxnTypeDeduct,
+		fmt.Sprintf("group_deduct:%d:%d", enrollment.ID, enrollment.EnrollSeq),
+		"group_enrollment", enrollment.ID, "团课报名扣次")
+}
+
+// Quit 退出：开课前 ≥X 小时可退并返还课时；临近开课不可退。
+// 释放名额后同事务尝试候补递补（P1 自动递补扣次）。
 func (s *GroupService) Quit(ctx context.Context, classID, userID int64) error {
 	var gc model.GroupClass
 	if err := s.db.WithContext(ctx).First(&gc, classID).Error; err != nil {
@@ -270,7 +279,8 @@ func (s *GroupService) Quit(ctx context.Context, classID, userID int64) error {
 	if startAt.Sub(time.Now()) < time.Duration(hours)*time.Hour {
 		return errs.Biz(fmt.Sprintf("开课前 %d 小时内不可退出", hours))
 	}
-	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	var promoted *model.GroupWaitlist
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		res := tx.Model(&model.GroupEnrollment{}).
 			Where("id = ? AND status = ?", ge.ID, model.GEStatusEnrolled).
 			Updates(map[string]interface{}{"status": model.GEStatusQuit, "quit_time": time.Now()})
@@ -291,11 +301,162 @@ func (s *GroupService) Quit(ctx context.Context, classID, userID int64) error {
 			Update("status", model.VerifyStatusExpired)
 		var mp model.MemberPackage
 		if err := tx.First(&mp, ge.MemberPackageID).Error; err == nil && mp.Status != model.MPStatusRefunded {
-			return returnOne(tx, &mp, fmt.Sprintf("group_refund:%d:%d", ge.ID, ge.EnrollSeq),
-				"group_enrollment", ge.ID, "退出团课返还")
+			if err := returnOne(tx, &mp, fmt.Sprintf("group_refund:%d:%d", ge.ID, ge.EnrollSeq),
+				"group_enrollment", ge.ID, "退出团课返还"); err != nil {
+				return err
+			}
 		}
-		return nil
+		// 候补递补：同事务内占位+扣次，失败不影响退出本身
+		var perr error
+		promoted, perr = promoteOneWaiting(tx, classID)
+		return perr
 	})
+	if err != nil {
+		return err
+	}
+	if promoted != nil {
+		tryNotify(ctx, s.notify, promoted.UserID, model.NotifySceneWaitlistPromoted, promoted.ID,
+			map[string]string{"thing1": "团课候补成功，已自动报名并扣次", "date2": dateOnly(gc.ClassDate)})
+	}
+	return nil
+}
+
+// Waitlist 满员候补登记（不扣次，递补成功才扣）。需先通过报名资格校验。
+func (s *GroupService) Waitlist(ctx context.Context, classID, userID, memberPackageID int64) (*model.GroupWaitlist, error) {
+	var gc model.GroupClass
+	if err := s.db.WithContext(ctx).First(&gc, classID).Error; err != nil {
+		return nil, errs.NotFound("团课不存在")
+	}
+	if gc.Status != model.GCStatusEnrolling && gc.Status != model.GCStatusFulfilled {
+		return nil, errs.Biz("该团课当前不可候补")
+	}
+	startAt, _ := time.ParseInLocation("2006-01-02 15:04", fmt.Sprintf("%s %02d:%02d", dateOnly(gc.ClassDate), gc.StartMinute/60, gc.StartMinute%60), time.Local)
+	if startAt.Before(time.Now()) {
+		return nil, errs.Biz("团课已开始")
+	}
+	var ge model.GroupEnrollment
+	if err := s.db.WithContext(ctx).
+		Where("group_class_id = ? AND user_id = ? AND status IN ?", classID, userID,
+			[]string{model.GEStatusEnrolled, model.GEStatusVerified}).First(&ge).Error; err == nil {
+		return nil, errs.Conflict("你已报名该团课，无需候补")
+	}
+	var mp model.MemberPackage
+	if err := s.validateMpForGroup(ctx, &gc, userID, memberPackageID, &mp); err != nil {
+		return nil, err
+	}
+	wl := model.GroupWaitlist{
+		OwnerID: gc.OwnerID, GroupClassID: classID, UserID: userID,
+		MemberPackageID: memberPackageID, Status: model.WLStatusWaiting,
+	}
+	if err := s.db.WithContext(ctx).Create(&wl).Error; err != nil {
+		if isDuplicateKey(err) {
+			// 重复登记：此前 failed/canceled 的记录复活为 waiting
+			res := s.db.WithContext(ctx).Model(&model.GroupWaitlist{}).
+				Where("group_class_id = ? AND user_id = ? AND status IN ?", classID, userID,
+					[]string{model.WLStatusFailed, model.WLStatusCanceled}).
+				Updates(map[string]interface{}{"status": model.WLStatusWaiting, "member_package_id": memberPackageID})
+			if res.RowsAffected == 0 {
+				return nil, errs.Conflict("已在候补中")
+			}
+			s.db.WithContext(ctx).
+				Where("group_class_id = ? AND user_id = ? AND status = ?", classID, userID, model.WLStatusWaiting).
+				First(&wl)
+			return &wl, nil
+		}
+		return nil, errs.Server(err, "候补登记失败")
+	}
+	return &wl, nil
+}
+
+// CancelWaitlist 取消候补
+func (s *GroupService) CancelWaitlist(ctx context.Context, classID, userID int64) error {
+	res := s.db.WithContext(ctx).Model(&model.GroupWaitlist{}).
+		Where("group_class_id = ? AND user_id = ? AND status = ?", classID, userID, model.WLStatusWaiting).
+		Update("status", model.WLStatusCanceled)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return errs.NotFound("未在候补中")
+	}
+	return nil
+}
+
+// validateMpForGroup 报名/候补共用的课时账户校验
+func (s *GroupService) validateMpForGroup(ctx context.Context, gc *model.GroupClass, userID, memberPackageID int64, mp *model.MemberPackage) error {
+	if err := s.db.WithContext(ctx).
+		Where("id = ? AND user_id = ?", memberPackageID, userID).First(mp).Error; err != nil {
+		return errs.NotFound("课时账户不存在")
+	}
+	if mp.Status != model.MPStatusInactive && mp.Status != model.MPStatusActive {
+		return errs.Biz("该课包当前状态不可用")
+	}
+	if mp.ExpireDate != nil && mp.ExpireDate.Format("2006-01-02") < time.Now().Format("2006-01-02") {
+		return errs.Biz("该课包已过期") // M3：状态未及时清扫时按有效期硬拒
+	}
+	if mp.PackageID != gc.PackageID {
+		return errs.Biz("请使用该团课对应课包的课时报名")
+	}
+	if mp.RemainingSessions() < 1 {
+		return errs.Biz("剩余课时不足")
+	}
+	return nil
+}
+
+// promoteOneWaiting 名额释放后按 FIFO 递补一名候补：
+// 登记课包已失效/课时不足 → 标 failed 继续下一位；递补成功（占位+扣次）→ promoted。
+// 名额再满则停止。返回递补成功者（nil=本轮无人递补）。
+func promoteOneWaiting(tx *gorm.DB, classID int64) (*model.GroupWaitlist, error) {
+	for {
+		var waiting []model.GroupWaitlist
+		if err := tx.Where("group_class_id = ? AND status = ?", classID, model.WLStatusWaiting).
+			Order("id").Limit(10).Find(&waiting).Error; err != nil {
+			return nil, err
+		}
+		if len(waiting) == 0 {
+			return nil, nil
+		}
+		wl := waiting[0]
+		// 名额检查：报名中且未满才可能递补
+		var cur model.GroupClass
+		if err := tx.First(&cur, classID).Error; err != nil {
+			return nil, err
+		}
+		if cur.Status != model.GCStatusEnrolling || cur.EnrolledCount >= cur.Capacity {
+			return nil, nil
+		}
+		var mp model.MemberPackage
+		usable := tx.First(&mp, wl.MemberPackageID).Error == nil &&
+			(mp.Status == model.MPStatusInactive || mp.Status == model.MPStatusActive) &&
+			(mp.ExpireDate == nil || mp.ExpireDate.Format("2006-01-02") >= time.Now().Format("2006-01-02")) &&
+			mp.PackageID == cur.PackageID &&
+			mp.RemainingSessions() >= 1
+		if !usable {
+			tx.Model(&model.GroupWaitlist{}).
+				Where("id = ? AND status = ?", wl.ID, model.WLStatusWaiting).
+				Update("status", model.WLStatusFailed)
+			continue // 尝试下一位
+		}
+		var enrollment model.GroupEnrollment
+		if err := enrollInTx(tx, &enrollment, classID, wl.UserID, wl.MemberPackageID, &mp); err != nil {
+			if ae, ok := err.(*errs.AppError); ok && ae.Code == errs.CodeConflict {
+				// 已报名过（候补期间手动报上了）等冲突：标 failed 继续下一位
+				tx.Model(&model.GroupWaitlist{}).
+					Where("id = ? AND status = ?", wl.ID, model.WLStatusWaiting).
+					Update("status", model.WLStatusFailed)
+				continue
+			}
+			return nil, err
+		}
+		now := time.Now()
+		if err := tx.Model(&model.GroupWaitlist{}).
+			Where("id = ? AND status = ?", wl.ID, model.WLStatusWaiting).
+			Updates(map[string]interface{}{"status": model.WLStatusPromoted, "promoted_at": now}).Error; err != nil {
+			return nil, err
+		}
+		wl.Status, wl.PromotedAt = model.WLStatusPromoted, &now
+		return &wl, nil
+	}
 }
 
 // CancelByCoach 教练取消团课：全部报名学员返还课时
@@ -314,6 +475,10 @@ func (s *GroupService) CancelByCoach(ctx context.Context, classID, coachID int64
 	if res.RowsAffected == 0 {
 		return errs.Conflict("该团课当前不可取消")
 	}
+	// 课程取消：候补全部作废（不递补）
+	s.db.WithContext(ctx).Model(&model.GroupWaitlist{}).
+		Where("group_class_id = ? AND status = ?", classID, model.WLStatusWaiting).
+		Update("status", model.WLStatusCanceled)
 	var enrollments []model.GroupEnrollment
 	s.db.WithContext(ctx).Where("group_class_id = ? AND status = ?", classID, model.GEStatusEnrolled).Find(&enrollments)
 	// E6：逐人返还失败不再静默吞掉——收集失败并提示人工介入

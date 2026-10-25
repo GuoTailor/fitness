@@ -2,6 +2,7 @@ package task
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -25,6 +26,7 @@ func setupTaskDB(t *testing.T) *gorm.DB {
 		&model.MemberPackage{}, &model.PackageTransaction{}, &model.Booking{},
 		&model.GroupClass{}, &model.GroupEnrollment{}, &model.Verification{},
 		&model.TrainingRecord{}, &model.Review{}, &model.NotifyLog{}, &model.AppConfig{},
+		&model.CouponTemplate{}, &model.UserCoupon{},
 	))
 	return d
 }
@@ -192,4 +194,38 @@ func TestRunnerStateAdvances(t *testing.T) {
 	n, err = r.CloseExpiredOrders(ctx)
 	require.NoError(t, err)
 	assert.Zero(t, n)
+}
+
+// 续费提醒券：课时不足预警触发自动发券；重复扫描不重发（每人限领由模板控制）
+func TestRenewalCoupon(t *testing.T) {
+	d := setupTaskDB(t)
+	ctx := context.Background()
+
+	user := model.User{OpenID: "renew-user"}
+	require.NoError(t, d.Create(&user).Error)
+	pkg := model.CoursePackage{OwnerID: 1, Title: "续费包", Status: 1}
+	require.NoError(t, d.Create(&pkg).Error)
+	mp := model.MemberPackage{
+		OwnerID: 1, UserID: user.ID, PackageID: pkg.ID, PackageTitle: pkg.Title,
+		TotalSessions: 5, UsedSessions: 4, Status: model.MPStatusActive,
+	}
+	require.NoError(t, d.Create(&mp).Error)
+	tpl := model.CouponTemplate{Name: "续费券", Type: model.CouponTypeReduce, Amount: 2000,
+		PerUserLimit: 1, ValidDays: 30, Status: 1}
+	require.NoError(t, d.Create(&tpl).Error)
+
+	r := NewRunner(d, nil, config.NotifyConfig{Mock: true}, wechat.NewMockPay())
+	require.NoError(t, r.cfg.Set(ctx, model.CfgRenewalReminderTemplate, fmt.Sprint(tpl.ID), ""))
+
+	_, err := r.MemberWarnings(ctx)
+	require.NoError(t, err)
+	var cnt int64
+	d.Model(&model.UserCoupon{}).Where("user_id = ?", user.ID).Count(&cnt)
+	assert.EqualValues(t, 1, cnt, "首次预警发放续费券")
+
+	// 再次扫描：预警不重发（notify_log），券也不超发（每人限领）
+	_, err = r.MemberWarnings(ctx)
+	require.NoError(t, err)
+	d.Model(&model.UserCoupon{}).Where("user_id = ?", user.ID).Count(&cnt)
+	assert.EqualValues(t, 1, cnt)
 }

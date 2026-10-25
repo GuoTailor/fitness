@@ -17,11 +17,15 @@
     "pages/coach-admin/groups",
     "pages/coach-admin/verify",
     "pages/coach-admin/reviews",
+    "pages/coach-admin/feedback",
+    "pages/coach-admin/qa",
+    "pages/qa/mine",
     "pages/order/list",
     "pages/coupon/center",
     "pages/coupon/mine",
     "pages/agreement/agreement",
     "pages/training/index",
+    "pages/training/report",
     "pages/mine/mine"
   ],
   "window": {

@@ -8,3 +8,5 @@
 .copy-btn { margin-top: 24rpx; background: #f0faf6; color: #00b578; border-radius: 30rpx; }
 .review-tip { font-size: 24rpx; color: #666; }
 .review-btn { margin-top: 20rpx; background: #ffb400; color: #fff; border-radius: 40rpx; font-size: 28rpx; }
+
+.fb-content { font-size: 28rpx; color: #444; line-height: 1.7; margin-top: 8rpx; }

@@ -4,7 +4,7 @@ const { request } = require('../../utils/request')
 const fmtM = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
 
 Page({
-  data: { id: 0, type: 'private', code: '', title: '', timeText: '', status: '', canReview: false },
+  data: { id: 0, type: 'private', code: '', title: '', timeText: '', status: '', canReview: false, feedback: null },
 
   onLoad(query) {
     this.setData({ id: query.id, type: query.type || 'private' })
@@ -16,7 +16,7 @@ Page({
     const app2 = app
     await app2.ensureLogin()
     const { id, type } = this.data
-    let title, timeText, status, canCode = false, canReview = false
+    let title, timeText, status, canCode = false, canReview = false, feedback = null
     if (type === 'group') {
       const d = await request({ url: `/api/v1/group-classes/${id}` })
       title = d.class.title
@@ -24,6 +24,7 @@ Page({
       status = d.class.status
       canCode = d.myStatus === 'enrolled'
       canReview = d.myStatus === 'verified'
+      feedback = d.feedback || null
     } else {
       const list = await request({ url: '/api/v1/bookings' })
       const b = list.find((x) => x.id === Number(id))
@@ -33,8 +34,17 @@ Page({
       status = b.status
       canCode = b.status === 'pending' || b.status === 'confirmed'
       canReview = b.status === 'completed'
+      if (b.status === 'completed') {
+        try {
+          const d = await request({ url: `/api/v1/bookings/${id}` })
+          feedback = d.feedback || null
+        } catch (e) { /* 反馈缺失不影响详情 */ }
+      }
     }
-    this.setData({ title, timeText, status, canReview })
+    if (feedback && feedback.createdAt) {
+      feedback.createdAt = String(feedback.createdAt).replace('T', ' ').slice(0, 16)
+    }
+    this.setData({ title, timeText, status, canReview, feedback })
     if (canCode) {
       const url = type === 'group' ? `/api/v1/group-classes/${id}/code` : `/api/v1/bookings/${id}/code`
       const v = await request({ url })

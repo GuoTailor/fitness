@@ -64,6 +64,35 @@ Page({
     this.loadPkgs()
   },
 
+  // 满员候补：选课包 → 排队（不扣次，有人退出自动递补扣次）
+  async onWaitlist(e) {
+    const id = e.currentTarget.dataset.id
+    const pkgId = Number(e.currentTarget.dataset.pkg)
+    const { mps } = this.data
+    const matched = mps.filter((m) => m.packageId === pkgId && (m.totalSessions - m.usedSessions) >= 1)
+    if (!matched.length) return wx.showToast({ title: '请先购买对应课包', icon: 'none' })
+    let mp = matched[0]
+    if (matched.length > 1) {
+      const items = matched.map((m, i) => `${m.packageTitle}（余${m.totalSessions - m.usedSessions}节）`)
+      const { tapIndex } = await new Promise((r) => wx.showActionSheet({ itemList: items, success: r, fail: () => r({ tapIndex: -1 }) }))
+      if (tapIndex < 0) return
+      mp = matched[tapIndex]
+    }
+    try {
+      await request({ url: `/api/v1/group-classes/${id}/waitlist`, method: 'POST', data: { memberPackageId: mp.id } })
+      requestSubscribe(['waitlist_promoted'])
+      wx.showToast({ title: '已加入候补', icon: 'success' })
+      this.load()
+    } catch (err) { /* toast 已处理 */ }
+  },
+
+  async onWaitlistCancel(e) {
+    const id = e.currentTarget.dataset.id
+    await request({ url: `/api/v1/group-classes/${id}/waitlist/cancel`, method: 'POST' })
+    wx.showToast({ title: '已取消候补', icon: 'none' })
+    this.load()
+  },
+
   onCode(e) {
     wx.navigateTo({ url: `/pages/booking/detail?type=group&id=${e.currentTarget.dataset.id}` })
   },

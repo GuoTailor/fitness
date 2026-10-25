@@ -10,6 +10,12 @@
     <view class="tip" wx:else>当前状态（{{status}}）无需核销</view>
   </view>
 
+  <view class="card" wx:if="{{feedback}}">
+    <view class="title">教练课后反馈</view>
+    <view class="time">{{feedback.createdAt}}</view>
+    <view class="fb-content">{{feedback.content}}</view>
+  </view>
+
   <view class="card" wx:if="{{canReview}}">
     <view class="review-tip">这节课已完成，说说你的上课体验吧</view>
     <button class="review-btn" bindtap="goReview">去评价</button>

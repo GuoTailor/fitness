@@ -15,6 +15,11 @@
       <view class="gc-actions">
         <button wx:if="{{item.class.status === 'enrolling' && item.left > 0}}" class="a a-main" size="mini"
           bindtap="onEnroll" data-id="{{item.class.id}}" data-pkg="{{item.class.packageId}}">报名</button>
+        <button wx:if="{{item.waitlisted}}" class="a wl-on" size="mini"
+          catchtap="onWaitlistCancel" data-id="{{item.class.id}}">候补中</button>
+        <button wx:elif="{{(item.class.status === 'enrolling' && item.left <= 0) || item.class.status === 'fulfilled'}}"
+          class="a wl" size="mini"
+          catchtap="onWaitlist" data-id="{{item.class.id}}" data-pkg="{{item.class.packageId}}">候补</button>
         <button wx:if="{{item.myStatus === 'enrolled'}}" class="a" size="mini"
           catchtap="onQuit" data-id="{{item.class.id}}">退出</button>
         <button wx:if="{{item.myStatus === 'enrolled'}}" class="a a-main" size="mini"

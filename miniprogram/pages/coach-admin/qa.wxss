@@ -1,0 +1,22 @@
+.page { padding: 24rpx; }
+.tip { font-size: 22rpx; color: #999; margin-bottom: 20rpx; }
+.editor { background: #fff; border-radius: 16rpx; padding: 24rpx; margin-bottom: 24rpx; }
+.ta { width: 100%; min-height: 160rpx; font-size: 28rpx; }
+.ed-btns { display: flex; justify-content: flex-end; gap: 16rpx; margin-top: 16rpx; }
+.primary { background: #00B578; color: #fff; }
+.q { background: #fff; border-radius: 16rpx; padding: 24rpx; margin-bottom: 20rpx; }
+.q-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10rpx; }
+.asker { font-size: 26rpx; font-weight: 600; }
+.q-ops { display: flex; gap: 24rpx; }
+.pin { font-size: 22rpx; color: #999; }
+.pin.pinned { color: #ff6600; }
+.reply { font-size: 22rpx; color: #576b95; }
+.q-content { font-size: 28rpx; line-height: 1.6; }
+.q-meta { font-size: 20rpx; color: #bbb; margin-top: 8rpx; }
+.a { display: flex; gap: 12rpx; margin-top: 16rpx; padding-top: 16rpx; border-top: 1rpx dashed #f0f0f0; }
+.a-badge { flex-shrink: 0; font-size: 20rpx; background: #f0f9eb; color: #67c23a; border-radius: 6rpx; padding: 2rpx 10rpx; height: 36rpx; }
+.a-badge.coach { background: #00B578; color: #fff; }
+.a-body { flex: 1; }
+.a-content { font-size: 26rpx; color: #444; line-height: 1.6; }
+.a-meta { font-size: 20rpx; color: #bbb; margin-top: 6rpx; }
+.empty { text-align: center; color: #bbb; padding: 80rpx 0; font-size: 26rpx; }

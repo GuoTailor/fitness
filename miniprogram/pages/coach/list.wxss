@@ -9,3 +9,8 @@
 .sub { font-size: 24rpx; color: #999; margin-top: 8rpx; }
 .rating { font-size: 22rpx; color: #ffb400; margin-top: 6rpx; }
 .empty { text-align: center; color: #999; padding: 60rpx 0; }
+
+/* 评分筛选 */
+.rating-chips { display: flex; gap: 16rpx; padding: 16rpx 24rpx 0; }
+.chip { font-size: 24rpx; color: #666; background: #f5f6f8; border-radius: 28rpx; padding: 8rpx 24rpx; }
+.chip-active { color: #fff; background: linear-gradient(135deg, #ff7a45, #e64340); }

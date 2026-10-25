@@ -16,10 +16,29 @@ type slidingWindow struct {
 	events  map[string][]time.Time
 	limit   int
 	window  time.Duration
+	calls   uint64 // 定期触发全量清扫（E12：IP 众多时懒删不足以回收 map 空间）
 }
 
 func newSlidingWindow(limit int, window time.Duration) *slidingWindow {
 	return &slidingWindow{events: map[string][]time.Time{}, limit: limit, window: window}
+}
+
+// sweep 清除所有键中窗口外的记录，删除空键（内存回收）
+func (w *slidingWindow) sweep() {
+	cutoff := time.Now().Add(-w.window)
+	for k, list := range w.events {
+		kept := list[:0]
+		for _, t := range list {
+			if t.After(cutoff) {
+				kept = append(kept, t)
+			}
+		}
+		if len(kept) == 0 {
+			delete(w.events, k)
+		} else {
+			w.events[k] = kept
+		}
+	}
 }
 
 func (w *slidingWindow) allow(key string) bool {
@@ -28,7 +47,7 @@ func (w *slidingWindow) allow(key string) bool {
 	now := time.Now()
 	cutoff := now.Add(-w.window)
 	list := w.events[key]
-	// 淘汰窗口外记录
+	// 懒删除窗口外记录
 	kept := list[:0]
 	for _, t := range list {
 		if t.After(cutoff) {
@@ -40,6 +59,11 @@ func (w *slidingWindow) allow(key string) bool {
 		return false
 	}
 	w.events[key] = append(kept, now)
+	// 每 1024 次调用做一次全量清扫，防止大量一次性 IP 让 map 无界增长
+	w.calls++
+	if w.calls%1024 == 0 {
+		w.sweep()
+	}
 	return true
 }
 
@@ -82,17 +106,32 @@ func NewAdminLockout(threshold int, lockMinutes int) *AdminLockout {
 
 func (l *AdminLockout) key(username, ip string) string { return username + "@" + ip }
 
-// Locked 该账号+IP 是否处于锁定期（返回剩余时间）
+// Locked 该账号+IP 是否处于锁定期（返回剩余时间）；顺带回收过期锁定条目（E12）
 func (l *AdminLockout) Locked(username, ip string) (bool, time.Duration) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	last, ok := l.lastFail[l.key(username, ip)]
-	if ok && l.fails[l.key(username, ip)] >= l.threshold {
+	k := l.key(username, ip)
+	last, ok := l.lastFail[k]
+	if ok && l.fails[k] >= l.threshold {
 		if elapsed := time.Since(last); elapsed < l.lockTime {
 			return true, l.lockTime - elapsed
 		}
-		delete(l.fails, l.key(username, ip))
-		delete(l.lastFail, l.key(username, ip))
+		delete(l.fails, k)
+		delete(l.lastFail, k)
+	}
+	// 周期回收：超过锁定时长的旧条目不再占内存（上限清扫 256 条/次，避免持锁过久）
+	if len(l.fails) > 64 {
+		swept := 0
+		for fk, ft := range l.lastFail {
+			if time.Since(ft) > l.lockTime {
+				delete(l.fails, fk)
+				delete(l.lastFail, fk)
+				swept++
+				if swept >= 256 {
+					break
+				}
+			}
+		}
 	}
 	return false, 0
 }

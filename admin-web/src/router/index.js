@@ -14,6 +14,8 @@ const routes = [
       { path: 'coupons', component: () => import('../views/Coupons.vue'), meta: { title: '优惠券' } },
       { path: 'members', component: () => import('../views/Members.vue'), meta: { title: '学员管理' } },
       { path: 'reviews', component: () => import('../views/Reviews.vue'), meta: { title: '评价管理' } },
+      { path: 'qa', component: () => import('../views/Qa.vue'), meta: { title: '问答管理' } },
+      { path: 'audit-logs', component: () => import('../views/AuditLogs.vue'), meta: { title: '操作审计' } },
       { path: 'schedule', component: () => import('../views/Schedule.vue'), meta: { title: '预约课表' } },
       { path: 'settings', component: () => import('../views/Settings.vue'), meta: { title: '运营配置' } },
     ],

@@ -32,7 +32,8 @@ func OpenMySQL(cfg config.DBConfig) (*gorm.DB, error) {
 	}
 	sqlDB.SetMaxIdleConns(5)
 	sqlDB.SetMaxOpenConns(30)
-	sqlDB.SetConnMaxLifetime(time.Hour)
+	// 5 分钟回收连接：开发库走 VPN 隧道，长连接易被中间层静默掐断（表现为间歇性查询报错）
+	sqlDB.SetConnMaxLifetime(5 * time.Minute)
 	return d, nil
 }
 

@@ -67,11 +67,17 @@ func (h *ShopHandler) PackageDetail(c *gin.Context) {
 	resp.OK(c, data)
 }
 
-// ListCoaches GET /api/v1/coaches?specialty=&keyword=&page=
+// ListCoaches GET /api/v1/coaches?specialty=&keyword=&minRating=&page=
 func (h *ShopHandler) ListCoaches(c *gin.Context) {
 	page, size := pageOf(c)
+	minRating := 0.0
+	if v := c.Query("minRating"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			minRating = f
+		}
+	}
 	items, total, err := h.shop.ListCoaches(c.Request.Context(),
-		c.Query("specialty"), c.Query("keyword"), page, size)
+		c.Query("specialty"), c.Query("keyword"), minRating, page, size)
 	if err != nil {
 		resp.Handle(c, err)
 		return

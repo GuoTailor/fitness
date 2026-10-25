@@ -185,3 +185,98 @@ func (s *VerifyService) TrainingCalendar(ctx context.Context, userID int64, mont
 	}
 	return out, nil
 }
+
+// weekStatsOf 一段日期区间内的训练聚合（上课数/分钟/活跃天数/私教与团课占比）
+func (s *VerifyService) weekStatsOf(ctx context.Context, userID int64, from, to string) map[string]interface{} {
+	var rows []model.TrainingRecord
+	s.db.WithContext(ctx).
+		Where("user_id = ? AND record_date >= ? AND record_date <= ?", userID, from, to).
+		Find(&rows)
+	sessions := len(rows)
+	minutes, active, privateCnt, groupCnt := 0, 0, 0, 0
+	days := map[string]bool{}
+	for _, r := range rows {
+		minutes += r.DurationMinutes
+		days[dateOnly(r.RecordDate)] = true
+		if r.Source == "group" {
+			groupCnt++
+		} else {
+			privateCnt++
+		}
+	}
+	active = len(days)
+	return map[string]interface{}{
+		"sessions": sessions, "minutes": minutes, "activeDays": active,
+		"private": privateCnt, "group": groupCnt,
+	}
+}
+
+// WeeklyReport 训练周报：date 为一周内任一天（默认今天），周一起算。
+// 本周/上周对比 + 教练课时 Top + 周内体重首末变化。
+func (s *VerifyService) WeeklyReport(ctx context.Context, userID int64, date string, body *BodyService) (map[string]interface{}, error) {
+	day := time.Now()
+	if date != "" {
+		parsed, err := time.ParseInLocation("2006-01-02", date, time.Local)
+		if err != nil {
+			return nil, errs.BadParam("日期格式应为 YYYY-MM-DD")
+		}
+		day = parsed
+	}
+	mon := day.AddDate(0, 0, -int(day.Weekday()))
+	sun := mon.AddDate(0, 0, 6)
+	prevMon := mon.AddDate(0, 0, -7)
+	prevSun := mon.AddDate(0, 0, -1)
+	cur := s.weekStatsOf(ctx, userID, mon.Format("2006-01-02"), sun.Format("2006-01-02"))
+	prev := s.weekStatsOf(ctx, userID, prevMon.Format("2006-01-02"), prevSun.Format("2006-01-02"))
+
+	// 教练课时 Top
+	var coachRows []struct {
+		CoachID int64
+		Cnt     int
+		Minutes int
+	}
+	s.db.WithContext(ctx).Model(&model.TrainingRecord{}).
+		Select("coach_id, COUNT(*) as cnt, COALESCE(SUM(duration_minutes),0) as minutes").
+		Where("user_id = ? AND record_date >= ? AND record_date <= ?", userID,
+			mon.Format("2006-01-02"), sun.Format("2006-01-02")).
+		Group("coach_id").Order("cnt DESC").Limit(5).Scan(&coachRows)
+	coachIDs := make([]int64, 0, len(coachRows))
+	for _, r := range coachRows {
+		coachIDs = append(coachIDs, r.CoachID)
+	}
+	coachNames := map[int64]string{}
+	if len(coachIDs) > 0 {
+		var coaches []model.Coach
+		s.db.WithContext(ctx).Select("id, name").Where("id IN ?", coachIDs).Find(&coaches)
+		for _, c := range coaches {
+			coachNames[c.ID] = c.Name
+		}
+	}
+	byCoach := make([]map[string]interface{}, 0, len(coachRows))
+	for _, r := range coachRows {
+		byCoach = append(byCoach, map[string]interface{}{
+			"coachId": r.CoachID, "coachName": coachNames[r.CoachID],
+			"sessions": r.Cnt, "minutes": r.Minutes,
+		})
+	}
+
+	// 周内体重首末
+	weight := map[string]interface{}{"first": nil, "last": nil, "deltaKg": nil}
+	if body != nil {
+		var metrics []model.BodyMetric
+		s.db.WithContext(ctx).
+			Where("user_id = ? AND record_date >= ? AND record_date <= ?", userID,
+				mon.Format("2006-01-02"), sun.Format("2006-01-02")).
+			Order("record_date").Find(&metrics)
+		if len(metrics) > 0 {
+			first, last := metrics[0], metrics[len(metrics)-1]
+			weight["first"] = first.WeightG
+			weight["last"] = last.WeightG
+			weight["deltaKg"] = float64(last.WeightG-first.WeightG) / 1000
+		}
+	}
+	return map[string]interface{}{
+		"weekStart": mon.Format("2006-01-02"), "weekEnd": sun.Format("2006-01-02"),
+		"current": cur, "prev": prev, "byCoach": byCoach, "weight": weight,
+	}, nil
+}

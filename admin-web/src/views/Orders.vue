@@ -16,7 +16,7 @@
         <el-table-column prop="orderNo" label="订单号" width="230" />
         <el-table-column prop="title" label="商品" min-width="150" />
         <el-table-column label="学员" min-width="120">
-          <template #default="{ row }">{{ row.userNickname || row.userId }}<span class="sub">{{ row.userPhone }}</span></template>
+          <template #default="{ row }">{{ row.userNickname || row.userId }}<span class="sub">{{ maskPhone(row.userPhone) }}</span></template>
         </el-table-column>
         <el-table-column label="金额" width="90">
           <template #default="{ row }">¥{{ yuan(row.amount) }}</template>
@@ -89,6 +89,7 @@
 import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { listOrders, getOrder, listRefunds, approveRefund, rejectRefund, yuan } from '../api/admin'
+import { maskPhone } from '../utils/phone'
 
 const list = ref([])
 const total = ref(0)

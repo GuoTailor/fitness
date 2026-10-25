@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"github.com/gin-gonic/gin"
 
 	"fitness/internal/errs"
@@ -12,6 +13,13 @@ import (
 // AdminCouponHandler 后台优惠券：列表（含领取/使用对账）、新建、停用/编辑、定向发放
 type AdminCouponHandler struct {
 	coupons *service.CouponService
+	audit   *service.AuditService
+}
+
+// WithAudit 装配操作审计
+func (h *AdminCouponHandler) WithAudit(a *service.AuditService) *AdminCouponHandler {
+	h.audit = a
+	return h
 }
 
 func NewAdminCouponHandler(c *service.CouponService) *AdminCouponHandler {
@@ -122,6 +130,8 @@ func (h *AdminCouponHandler) Save(c *gin.Context) {
 		resp.Handle(c, errs.Server(err, "保存券失败"))
 		return
 	}
+	h.audit.Log(c, "coupon.save", "coupon", tpl.ID,
+		fmt.Sprintf("保存券模板「%s」type=%s amount=%d", tpl.Name, tpl.Type, tpl.Amount))
 	resp.OK(c, tpl)
 }
 
@@ -144,6 +154,11 @@ func (h *AdminCouponHandler) Toggle(c *gin.Context) {
 		resp.Handle(c, errs.NotFound("券不存在"))
 		return
 	}
+	toggleText := "停发"
+	if req.Status == 1 {
+		toggleText = "恢复发放"
+	}
+	h.audit.Log(c, "coupon.toggle", "coupon", id, fmt.Sprintf("券模板 %d %s", id, toggleText))
 	resp.OK(c, gin.H{"updated": true})
 }
 
@@ -165,5 +180,7 @@ func (h *AdminCouponHandler) Grant(c *gin.Context) {
 		resp.Handle(c, err)
 		return
 	}
+	h.audit.Log(c, "coupon.grant", "coupon", id,
+		fmt.Sprintf("定向发券给学员 %d（券实例 %d）", req.UserID, uc.ID))
 	resp.OK(c, uc)
 }

@@ -52,13 +52,14 @@
           <el-radio-group v-model="form.type" :disabled="form.id > 0">
             <el-radio value="reduce">满减券</el-radio>
             <el-radio value="discount">折扣券</el-radio>
+            <el-radio value="gift">赠课券</el-radio>
           </el-radio-group>
         </el-form-item>
-        <el-form-item :label="form.type === 'discount' ? '折扣（折）' : '减免金额（元）'">
-          <el-input-number v-model="form.amountYuan" :min="0.01" :max="99999" :step="1" :precision="2" />
-          <span class="tip" v-if="form.type === 'discount'">填 8.8 表示 8.8 折</span>
+        <el-form-item :label="amountLabel">
+          <el-input-number v-model="form.amountYuan" :min="amountMin" :max="amountMax" :step="form.type === 'gift' ? 1 : 1" :precision="form.type === 'gift' ? 0 : 2" />
+          <span class="tip">{{ amountTip }}</span>
         </el-form-item>
-        <el-form-item label="用券门槛（元）">
+        <el-form-item label="用券门槛（元）" v-if="form.type !== 'gift'">
           <el-input-number v-model="form.thresholdYuan" :min="0" :max="99999" :step="1" :precision="2" />
           <span class="tip">0 = 无门槛</span>
         </el-form-item>
@@ -95,7 +96,7 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { listCoupons, saveCoupon, toggleCoupon, grantCoupon } from '../api/admin'
 
@@ -106,6 +107,13 @@ const form = reactive({})
 const grantDialog = ref(false)
 const grantRow = ref(null)
 const grantUserId = ref(0)
+
+const amountLabel = computed(() =>
+  ({ reduce: '减免金额（元）', discount: '折扣（折）', gift: '赠送课时数' }[form.type] || '金额'))
+const amountTip = computed(() =>
+  ({ discount: '填 8.8 表示 8.8 折', gift: '用券购课即赠 N 节课时（不降价，可与活动价叠加）', reduce: '' }[form.type] || ''))
+const amountMin = computed(() => (form.type === 'gift' ? 1 : 0.01))
+const amountMax = computed(() => (form.type === 'gift' ? 10 : 99999))
 
 async function load() {
   loading.value = true
@@ -126,13 +134,15 @@ function add() {
 }
 
 async function save() {
-  // 折扣：8.8（折）→ 8800 万分比；满减：元 → 分
+  // 折扣：8.8（折）→ 8800 万分比；满减：元 → 分；赠课：课时数原样
   const amount = form.type === 'discount'
     ? Math.round(form.amountYuan * 1000)
-    : Math.round(form.amountYuan * 100)
+    : form.type === 'gift'
+      ? Math.round(form.amountYuan)
+      : Math.round(form.amountYuan * 100)
   await saveCoupon({
     id: form.id, name: form.name, type: form.type,
-    threshold: Math.round(form.thresholdYuan * 100),
+    threshold: form.type === 'gift' ? 0 : Math.round(form.thresholdYuan * 100),
     amount,
     packageId: form.packageId, totalCount: form.totalCount,
     perUserLimit: form.perUserLimit, validDays: form.validDays, remark: form.remark,

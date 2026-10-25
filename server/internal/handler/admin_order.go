@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
@@ -16,6 +17,13 @@ type AdminOrderHandler struct {
 	db     *gorm.DB
 	orders *service.OrderService
 	member *service.MemberService
+	audit  *service.AuditService
+}
+
+// WithAudit 装配操作审计（资金类操作留痕）
+func (h *AdminOrderHandler) WithAudit(a *service.AuditService) *AdminOrderHandler {
+	h.audit = a
+	return h
 }
 
 func NewAdminOrderHandler(db *gorm.DB, orders *service.OrderService, member *service.MemberService) *AdminOrderHandler {
@@ -112,6 +120,8 @@ func (h *AdminOrderHandler) ApproveRefund(c *gin.Context) {
 		resp.Handle(c, err)
 		return
 	}
+	h.audit.Log(c, "refund.approve", "refund", refund.ID,
+		fmt.Sprintf("退款单 %s 审批通过，金额 %d 分，订单 %d", refund.RefundNo, refund.Amount, refund.OrderID))
 	resp.OK(c, refund)
 }
 
@@ -129,6 +139,7 @@ func (h *AdminOrderHandler) RejectRefund(c *gin.Context) {
 		resp.Handle(c, err)
 		return
 	}
+	h.audit.Log(c, "refund.reject", "refund", id, "拒绝退款，原因: "+req.Reason)
 	resp.OK(c, gin.H{"rejected": true})
 }
 
@@ -170,17 +181,20 @@ func (h *AdminOrderHandler) AdjustSessions(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Change int    `json:"change" binding:"required"`
-		Remark string `json:"remark"`
+		Change    int    `json:"change" binding:"required"`
+		Remark    string `json:"remark"`
+		ClientKey string `json:"clientKey"` // 客户端幂等键（弹窗打开时生成，防双击/重放重复调整）
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.Handle(c, service.BadParamJSON())
 		return
 	}
-	mp, err := h.member.AdjustSessions(c.Request.Context(), userID, mpID, req.Change, req.Remark, middleware.AdminUsername(c))
+	mp, err := h.member.AdjustSessions(c.Request.Context(), userID, mpID, req.Change, req.Remark, middleware.AdminUsername(c), req.ClientKey)
 	if err != nil {
 		resp.Handle(c, err)
 		return
 	}
+	h.audit.Log(c, "member.adjust", "member_package", mpID,
+		fmt.Sprintf("手动调整 %+d 课时（学员 %d），备注: %s", req.Change, userID, req.Remark))
 	resp.OK(c, mp)
 }

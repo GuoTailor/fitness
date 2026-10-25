@@ -6,6 +6,7 @@ import "time"
 const (
 	CouponTypeReduce   = "reduce"   // 满减券：amount=减免分，满 threshold 可用
 	CouponTypeDiscount = "discount" // 折扣券：amount=折扣率万分比（8800=88折）
+	CouponTypeGift     = "gift"     // 赠课券：amount=赠送课时数，用券下单后随入账赠送（不降价）
 )
 
 // 券实例状态

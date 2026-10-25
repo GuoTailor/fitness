@@ -20,9 +20,12 @@
         <view class="sku-name">{{item.name}}</view>
         <view class="sku-sub">{{item.sessions}}节 · 有效期{{item.validDays}}天</view>
         <view class="sku-price">
-          <text wx:if="{{item.newcomerYuan}}" class="np">¥{{item.newcomerYuan}}</text>
-          <text class="{{item.newcomerYuan ? 'strike' : ''}}">¥{{item.priceYuan}}</text>
-          <text wx:if="{{item.newcomerYuan}}" class="np-tag">新人价</text>
+          <block wx:if="{{item.dispYuan}}">
+            <text class="np">¥{{item.dispYuan}}</text>
+            <text class="strike">¥{{item.priceYuan}}</text>
+            <text class="np-tag {{item.dispTag === '限时价' ? 'promo-tag' : ''}}">{{item.dispTag}}</text>
+          </block>
+          <text wx:else>¥{{item.priceYuan}}</text>
         </view>
       </view>
     </view>
@@ -32,7 +35,10 @@
       <text class="c-go" catchtap="onGoCouponCenter">领券</text>
       <text class="c-arrow">›</text>
     </view>
-    <view class="np-tip" wx:if="{{selectedSku >= 0 && detail.skus[selectedSku].newcomerYuan}}">新人专享价已生效（每人限一次）；新人价与优惠券不叠加，自动按最优结算</view>
+    <view class="promo-count" wx:if="{{selectedSku >= 0 && detail.skus[selectedSku].promoActive && promoLeft}}">
+      限时活动 · 距结束 {{promoLeft}}
+    </view>
+    <view class="np-tip" wx:if="{{selectedSku >= 0 && (detail.skus[selectedSku].newcomerYuan || detail.skus[selectedSku].promoActive)}}">新人价/限时活动价与优惠券不叠加，自动按最优结算；赠课券可叠加（购课赠课时）</view>
   </view>
 
   <view class="card">
@@ -59,19 +65,61 @@
       <view class="tab {{reviewTab === 'reviews' ? 'tab-active' : ''}}" bindtap="onTab" data-tab="reviews">
         学员评价（{{detail.ratingCount}}）
       </view>
-      <view class="tab" style="color:#bbb">课程问答（即将上线）</view>
-    </view>
-    <view wx:for="{{detail.reviews}}" wx:key="id" class="review">
-      <view class="review-head">
-        <text class="review-stars">{{item.rating}}★</text>
-        <text class="review-time">{{item.createdAt}}</text>
+      <view class="tab {{reviewTab === 'qa' ? 'tab-active' : ''}}" bindtap="onTab" data-tab="qa">
+        课程问答{{qaTotal ? '（' + qaTotal + '）' : ''}}
       </view>
-      <view class="review-content">{{item.content}}</view>
-      <view class="review-reply" wx:if="{{item.coachReply}}">教练回复：{{item.coachReply}}</view>
     </view>
-    <view class="empty-inline" wx:if="{{!detail.reviews.length}}">暂无评价，完成上课后即可评价</view>
-    <navigator class="all-reviews" wx:if="{{detail.ratingCount > 5}}"
-               url="/pages/review/public?type=package&id={{detail.package.id}}">查看全部 {{detail.ratingCount}} 条评价 ›</navigator>
+
+    <block wx:if="{{reviewTab === 'reviews'}}">
+      <view wx:for="{{detail.reviews}}" wx:key="id" class="review">
+        <view class="review-head">
+          <text class="review-stars">{{item.rating}}★</text>
+          <text class="review-time">{{item.createdAt}}</text>
+        </view>
+        <view class="review-content">{{item.content}}</view>
+        <view class="review-reply" wx:if="{{item.coachReply}}">教练回复：{{item.coachReply}}</view>
+      </view>
+      <view class="empty-inline" wx:if="{{!detail.reviews.length}}">暂无评价，完成上课后即可评价</view>
+      <navigator class="all-reviews" wx:if="{{detail.ratingCount > 5}}"
+                 url="/pages/review/public?type=package&id={{detail.package.id}}">查看全部 {{detail.ratingCount}} 条评价 ›</navigator>
+    </block>
+
+    <block wx:if="{{reviewTab === 'qa'}}">
+      <view class="qa-ask-bar" bindtap="onToggleAsk">
+        <text class="qa-ask-tip">想了解这门课？提问前先看看已有问答</text>
+        <text class="qa-ask-btn">提问 ›</text>
+      </view>
+      <view class="qa-form" wx:if="{{askOpen}}">
+        <textarea class="qa-ta" value="{{askContent}}" maxlength="500" placeholder="例如：零基础可以上吗？需要准备什么？" bindinput="onAskInput"></textarea>
+        <view class="qa-form-foot">
+          <view class="qa-anon">
+            <text>匿名展示</text>
+            <switch checked="{{askAnonymous}}" bindchange="onAskAnon" color="#00B578" />
+          </view>
+          <button class="qa-submit" size="mini" disabled="{{asking}}" bindtap="onSubmitAsk">{{asking ? '提交中…' : '提交提问'}}</button>
+        </view>
+      </view>
+
+      <view class="qa-item" wx:for="{{qaList}}" wx:key="id">
+        <view class="qa-q">
+          <text class="qa-badge q">问</text>
+          <view class="qa-q-body">
+            <view class="qa-q-content">{{item.content}}</view>
+            <view class="qa-meta">{{item.asker}} · {{item.timeText}}</view>
+          </view>
+          <text class="qa-pin" wx:if="{{item.pinned}}">置顶</text>
+        </view>
+        <view class="qa-a" wx:for="{{item.answers}}" wx:for-item="a" wx:key="id">
+          <text class="qa-badge a {{a.isCoach ? 'coach' : ''}}">{{a.isCoach ? '教练' : '答'}}</text>
+          <view class="qa-a-body">
+            <view class="qa-a-content">{{a.content}}</view>
+            <view class="qa-meta">{{a.authorName || '学员'}} · {{a.timeText}}</view>
+          </view>
+        </view>
+        <view class="qa-none" wx:if="{{!item.answers.length}}">等待教练或已购学员回复</view>
+      </view>
+      <view class="empty-inline" wx:if="{{!qaList.length && !asking}}">暂无提问，来问第一个问题吧</view>
+    </block>
   </view>
 
   <view class="footer-bar-space"></view>

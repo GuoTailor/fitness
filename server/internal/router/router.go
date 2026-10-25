@@ -51,24 +51,31 @@ func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.Mini
 	bookingSvc := service.NewBookingService(db, cfgSvc).WithNotify(notifySvc)
 	groupSvc := service.NewGroupService(db, cfgSvc).WithNotify(notifySvc)
 	verifySvc := service.NewVerifyService(db)
-	reviewSvc := service.NewReviewService(db, cfgSvc).WithUploadPrefixes(cfg.Upload.BaseURL)
+	feedbackSvc := service.NewFeedbackService(db).WithNotify(notifySvc)
+	bodySvc := service.NewBodyService(db)
+	qaSvc := service.NewQaService(db).WithNotify(notifySvc)
+	auditSvc := service.NewAuditService(db)
+	reviewSvc := service.NewReviewService(db, cfgSvc).WithUploadPrefixes(cfg.Upload.BaseURL).WithRewardCoupons(couponSvc)
 	statsSvc := service.NewStatsService(db)
 
 	authH := handler.NewAuthHandler(authSvc)
 	meH := handler.NewMeHandler(db)
 	shopH := handler.NewShopHandler(shopSvc)
 	orderH := handler.NewOrderHandler(orderSvc, memberSvc)
-	bookingH := handler.NewBookingHandler(bookingSvc, groupSvc, verifySvc)
+	bookingH := handler.NewBookingHandler(bookingSvc, groupSvc, verifySvc, feedbackSvc)
 	coachH := handler.NewCoachHandler(db, bookingSvc, groupSvc, verifySvc, cfg.OwnerID)
-	adminShopH := handler.NewAdminShopHandler(db, cfgSvc, cfg)
-	adminOrderH := handler.NewAdminOrderHandler(db, orderSvc, memberSvc)
-	adminBookingH := handler.NewAdminBookingHandler(db, bookingSvc, verifySvc)
-	reviewH := handler.NewReviewHandler(reviewSvc, verifySvc, cfg.Notify)
+	adminShopH := handler.NewAdminShopHandler(db, cfgSvc, cfg).WithAudit(auditSvc)
+	adminOrderH := handler.NewAdminOrderHandler(db, orderSvc, memberSvc).WithAudit(auditSvc)
+	adminBookingH := handler.NewAdminBookingHandler(db, bookingSvc, verifySvc).WithAudit(auditSvc)
+	reviewH := handler.NewReviewHandler(reviewSvc, verifySvc, cfg.Notify).WithAudit(auditSvc)
 	statsH := handler.NewStatsHandler(statsSvc)
 	uploadH := handler.NewUploadHandler(uploadSvc)
 	miscH := handler.NewMiscHandler(cfgSvc)
 	couponH := handler.NewCouponHandler(couponSvc)
-	adminCouponH := handler.NewAdminCouponHandler(couponSvc)
+	adminCouponH := handler.NewAdminCouponHandler(couponSvc).WithAudit(auditSvc)
+	feedbackH := handler.NewFeedbackHandler(feedbackSvc, bodySvc, verifySvc)
+	qaH := handler.NewQaHandler(qaSvc)
+	adminAuditH := handler.NewAdminAuditHandler(auditSvc)
 
 	r.GET("/healthz", handler.Ping)
 
@@ -86,6 +93,7 @@ func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.Mini
 		api.POST("/auth/login", middleware.LoginRateLimit(10), authH.Login)
 		api.POST("/auth/phone", middleware.RequireUser(), authH.BindPhone)
 		api.GET("/me", middleware.RequireUser(), meH.Me)
+		api.PUT("/me", middleware.RequireUser(), meH.UpdateMe)
 
 		api.GET("/home", shopH.Home)
 		api.GET("/packages", shopH.ListPackages)
@@ -111,6 +119,7 @@ func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.Mini
 		api.GET("/coaches/:id/slots", bookingH.Slots)
 		api.POST("/bookings", middleware.RequireUser(), bookingH.Create)
 		api.GET("/bookings", middleware.RequireUser(), bookingH.My)
+		api.GET("/bookings/:id", middleware.RequireUser(), bookingH.Detail)
 		api.POST("/bookings/:id/cancel", middleware.RequireUser(), bookingH.Cancel)
 		api.GET("/bookings/:id/code", middleware.RequireUser(), bookingH.Code)
 		// 团课
@@ -118,10 +127,22 @@ func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.Mini
 		api.GET("/group-classes/:id", bookingH.GroupDetail)
 		api.POST("/group-classes/:id/enroll", middleware.RequireUser(), bookingH.GroupEnroll)
 		api.POST("/group-classes/:id/quit", middleware.RequireUser(), bookingH.GroupQuit)
+		api.POST("/group-classes/:id/waitlist", middleware.RequireUser(), bookingH.GroupWaitlist)
+		api.POST("/group-classes/:id/waitlist/cancel", middleware.RequireUser(), bookingH.GroupWaitlistCancel)
 		api.GET("/group-classes/:id/code", middleware.RequireUser(), bookingH.GroupCode)
 		// 训练记录
 		api.GET("/training", middleware.RequireUser(), bookingH.Training)
 		api.GET("/training/calendar", middleware.RequireUser(), reviewH.TrainingCalendar)
+		api.GET("/training/report", middleware.RequireUser(), feedbackH.Report)
+		// 课后反馈与体重
+		api.GET("/feedback/mine", middleware.RequireUser(), feedbackH.Mine)
+		api.POST("/body-metrics", middleware.RequireUser(), feedbackH.AddMetric)
+		api.GET("/body-metrics", middleware.RequireUser(), feedbackH.ListMetrics)
+		// 课程问答（公开列表；提问/回复需登录）
+		api.GET("/packages/:id/qa", qaH.ListOfPackage)
+		api.POST("/qa/questions", middleware.RequireUser(), qaH.Ask)
+		api.GET("/qa/mine", middleware.RequireUser(), qaH.MyQuestions)
+		api.POST("/qa/questions/:id/answers", middleware.RequireUser(), qaH.Answer)
 		// 评价
 		api.GET("/reviews/reviewable", middleware.RequireUser(), reviewH.Reviewable)
 		api.POST("/reviews", middleware.RequireUser(), reviewH.Submit)
@@ -140,6 +161,10 @@ func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.Mini
 		coach.GET("/packages", coachH.MyPackages)
 		coach.GET("/schedule", coachH.Schedule)
 		coach.PUT("/schedule", coachH.SaveSchedule)
+		// 教练请假（当日时段屏蔽）
+		coach.GET("/leaves", coachH.Leaves)
+		coach.POST("/leaves", coachH.AddLeave)
+		coach.DELETE("/leaves/:id", coachH.CancelLeave)
 		coach.GET("/bookings", coachH.Day)
 		coach.POST("/bookings/:id/confirm", coachH.Confirm)
 		coach.POST("/bookings/:id/reject", coachH.RejectBooking)
@@ -148,6 +173,13 @@ func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.Mini
 		coach.GET("/group-classes/:id/enrollments", coachH.Enrollments)
 		coach.POST("/group-classes/:id/cancel", coachH.CancelGroup)
 		coach.POST("/verify", coachH.Verify)
+		// 课后反馈（学员记录）
+		coach.POST("/feedback", feedbackH.Write)
+		coach.GET("/feedbacks", feedbackH.CoachList)
+		// 留言答疑
+		coach.GET("/qa", qaH.CoachQuestions)
+		coach.POST("/qa/:id/answers", qaH.CoachAnswer)
+		coach.POST("/qa/:id/pin", qaH.CoachPin)
 		coach.GET("/stats", coachH.Stats)
 		coach.GET("/reviews", reviewH.CoachMyReviews)
 		coach.POST("/reviews/:id/reply", reviewH.CoachReply)
@@ -205,6 +237,13 @@ func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.Mini
 		a.GET("/reviews", reviewH.AdminList)
 		a.POST("/reviews/:id/audit", reviewH.AdminAudit)
 		a.POST("/reviews/:id/featured", reviewH.AdminFeatured)
+		// 问答区管理（先发后审：隐藏违规、置顶沉淀 FAQ）
+		a.GET("/qa", qaH.AdminList)
+		a.POST("/qa/questions/:id/status", qaH.SetQuestionStatus)
+		a.POST("/qa/questions/:id/pin", qaH.AdminPin)
+		a.POST("/qa/answers/:id/status", qaH.SetAnswerStatus)
+		// 操作审计日志（仅老板）
+		a.GET("/audit-logs", middleware.RequireBoss(), adminAuditH.List)
 	}
 
 	return r, nil

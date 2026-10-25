@@ -72,6 +72,11 @@
           <el-input-number v-model="s.price" :min="0" :step="100" placeholder="售价(分)" style="width: 140px" />
           <el-input-number v-model="s.originalPrice" :min="0" :step="100" placeholder="原价(分)" style="width: 140px" />
           <el-input-number v-model="s.newcomerPrice" :min="0" :step="100" placeholder="新人价(分,0关)" style="width: 160px" />
+          <el-input-number v-model="s.promoPrice" :min="0" :step="100" placeholder="活动价(分,0关)" style="width: 160px" />
+          <el-date-picker v-model="s.promoStart" type="datetime" placeholder="活动开始"
+                          value-format="YYYY-MM-DD HH:mm:ss" style="width: 190px" />
+          <el-date-picker v-model="s.promoEnd" type="datetime" placeholder="活动结束"
+                          value-format="YYYY-MM-DD HH:mm:ss" style="width: 190px" />
           <el-button link type="danger" @click="form.skus.splice(i, 1)">删除</el-button>
         </div>
         <el-button size="small" style="margin-top: 8px" @click="addSku">+ 添加规格</el-button>
@@ -119,16 +124,32 @@ async function loadCoaches() {
 }
 
 function addSku() {
-  form.skus.push({ id: 0, name: '', sessions: 10, validDays: 365, price: 0, originalPrice: 0, newcomerPrice: 0, status: 1, sort: form.skus.length + 1 })
+  form.skus.push({ id: 0, name: '', sessions: 10, validDays: 365, price: 0, originalPrice: 0, newcomerPrice: 0, promoPrice: 0, promoStart: '', promoEnd: '', status: 1, sort: form.skus.length + 1 })
 }
 
 function openForm(row) {
   Object.assign(form, row
-    ? { ...row, skus: row.skus.map((s) => ({ newcomerPrice: 0, ...s })), coachIds: [...(row.coachIds || [])] }
+    ? {
+        ...row,
+        skus: row.skus.map((s) => ({
+          newcomerPrice: 0, promoPrice: 0, promoStart: '', promoEnd: '', ...s,
+          promoStart: fmtDT(s.promoStart), promoEnd: fmtDT(s.promoEnd),
+        })),
+        coachIds: [...(row.coachIds || [])],
+      }
     : { id: 0, title: '', category: 'private', tags: '', difficulty: 3, coverUrl: '', introVideoUrl: '',
         outline: '', suitable: '', status: 1, sort: 0, skus: [], coachIds: [] })
   if (!form.skus.length) addSku()
   dialog.value = true
+}
+
+// 后端 ISO 时间 → 表单用的 YYYY-MM-DD HH:mm:ss（el-date-picker value-format）
+function fmtDT(v) {
+  if (!v) return ''
+  const d = new Date(v)
+  if (isNaN(d)) return ''
+  const p = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
 }
 
 async function toggleStatus(row) {
@@ -174,6 +195,7 @@ onMounted(() => {
 }
 .sku-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
   margin-bottom: 8px;

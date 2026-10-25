@@ -64,7 +64,10 @@ func (s *OrderService) Create(ctx context.Context, userID int64, skuID int64, co
 
 	// ---- 优惠计算（事务外预读，事务内终校验）----
 	newcomerOff := newcomerDiscountOf(ctx, s.db, userID, &sku)
+	promoOff := promoDiscountOf(&sku, time.Now())
 	var couponOff int64
+	isGiftCoupon := false
+	giftAmount := 0 // 赠课券赠送课时数（预读快照，事务内核销时兜底校正）
 	if couponID != 0 {
 		var uc model.UserCoupon
 		if err := s.db.WithContext(ctx).
@@ -79,21 +82,44 @@ func (s *OrderService) Create(ctx context.Context, userID int64, skuID int64, co
 		if tpl.PackageID != 0 && tpl.PackageID != pkg.ID {
 			return nil, errs.Biz("该优惠券不适用于此课包")
 		}
-		couponOff = CouponBenefit(&tpl, sku.Price)
-		if couponOff <= 0 {
-			return nil, errs.Biz("订单金额未满足用券条件")
+		if tpl.Type == model.CouponTypeGift {
+			isGiftCoupon = true // 赠课券不降价：绑单赠课时，可与价格类优惠叠加
+			giftAmount = int(tpl.Amount)
+		} else {
+			couponOff = CouponBenefit(&tpl, sku.Price)
+			if couponOff <= 0 {
+				return nil, errs.Biz("订单金额未满足用券条件")
+			}
 		}
 	}
-	useNewcomer := false
+	// 三方比价（规划 §7.1 不叠加、只应用单一最大优惠）。
+	// 同额优先级 promo > newcomer > coupon：活动价不限次，同额时保住
+	// 新人一次性资格与券（不核销、不消耗）。
+	useNewcomer, usePromo := false, false
 	applyCoupon := int64(0)
+	if isGiftCoupon {
+		applyCoupon = couponID // 赠课券独立绑单，不参与比价
+	}
 	amount := sku.Price
+	best := promoOff
+	if newcomerOff > best {
+		best = newcomerOff
+	}
+	if couponOff > best {
+		best = couponOff
+	}
 	switch {
-	case newcomerOff > couponOff:
-		useNewcomer = true
-		amount = sku.Price - newcomerOff
-	case couponOff > 0:
+	case best <= 0:
+		// 无价格优惠
+	case couponOff == best && couponOff > promoOff && couponOff > newcomerOff:
 		applyCoupon = couponID
 		amount = sku.Price - couponOff
+	case newcomerOff == best && newcomerOff >= couponOff && newcomerOff > promoOff:
+		useNewcomer = true
+		amount = sku.Price - newcomerOff
+	default:
+		usePromo = true
+		amount = sku.Price - promoOff
 	}
 	if amount < 1 {
 		amount = 1
@@ -103,8 +129,12 @@ func (s *OrderService) Create(ctx context.Context, userID int64, skuID int64, co
 	if useNewcomer {
 		newcomerUsed = 1
 	}
+	promoUsed := int8(0)
+	if usePromo {
+		promoUsed = 1
+	}
 	couponAmount := int64(0)
-	if applyCoupon != 0 {
+	if applyCoupon != 0 && !isGiftCoupon {
 		couponAmount = couponOff
 	}
 	order := model.Order{
@@ -122,6 +152,8 @@ func (s *OrderService) Create(ctx context.Context, userID int64, skuID int64, co
 		SkuValidDays:  sku.ValidDays,
 		SkuUnitPrice:  unitPrice,
 		NewcomerUsed:  newcomerUsed,
+		PromoUsed:     promoUsed,
+		GiftSessions:  giftAmount,
 	}
 	// 订单与支付单同事务创建（M11）：避免只写一半；券核销同事务，失败整体回滚
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -132,12 +164,12 @@ func (s *OrderService) Create(ctx context.Context, userID int64, skuID int64, co
 			return err
 		}
 		if applyCoupon != 0 {
-			// 事务内终校验并核销；模板极小概率在预读后被改动时以核销时的优惠额修正订单
-			benefit, err := ApplyCouponForOrder(tx, userID, applyCoupon, order.ID, pkg.ID, sku.Price)
-			if err != nil {
-				return err
+			// 事务内终校验并核销；模板极小概率在预读后被改动时以核销时的结果修正订单
+			benefit, gift, cerr := ApplyCouponForOrder(tx, userID, applyCoupon, order.ID, pkg.ID, sku.Price)
+			if cerr != nil {
+				return cerr
 			}
-			if benefit != couponAmount {
+			if !isGiftCoupon && benefit != couponAmount {
 				fixed := sku.Price - benefit
 				if fixed < 1 {
 					fixed = 1
@@ -151,6 +183,13 @@ func (s *OrderService) Create(ctx context.Context, userID int64, skuID int64, co
 					return err
 				}
 				order.Amount, order.CouponAmount = fixed, benefit
+			}
+			if isGiftCoupon && gift != order.GiftSessions {
+				if err := tx.Model(&model.Order{}).Where("id = ?", order.ID).
+					Update("gift_sessions", gift).Error; err != nil {
+					return err
+				}
+				order.GiftSessions = gift
 			}
 		}
 		return nil
@@ -174,6 +213,23 @@ func newcomerDiscountOf(ctx context.Context, db *gorm.DB, userID int64, sku *mod
 		return 0
 	}
 	return sku.Price - *sku.NewcomerPrice
+}
+
+// promoDiscountOf 限时活动价可享优惠额（0=不可享）：SKU 三列齐设且 now 落在 [start, end) 内。
+func promoDiscountOf(sku *model.PackageSKU, now time.Time) int64 {
+	if sku.PromoPrice == nil || sku.PromoStart == nil || sku.PromoEnd == nil {
+		return 0
+	}
+	p := *sku.PromoPrice
+	if p <= 0 || p >= sku.Price || now.Before(*sku.PromoStart) || !now.Before(*sku.PromoEnd) {
+		return 0
+	}
+	return sku.Price - p
+}
+
+// PromoActive 详情页展示用：活动价当前是否生效
+func PromoActive(sku *model.PackageSKU, now time.Time) bool {
+	return promoDiscountOf(sku, now) > 0
 }
 
 // newcomerEligible 手机号维度的新人资格（详情页展示与下单共用一个判定）
@@ -307,17 +363,25 @@ func (s *OrderService) calcRefundAmount(ctx context.Context, order *model.Order,
 		return refundCalc{amount: order.Amount, note: fmt.Sprintf("未开卡且在 %d 天内，全额退", fullDays),
 			calcType: "full", unitPrice: order.SkuUnitPrice}, nil
 	}
-	remaining := mp.TotalSessions - mp.UsedSessions
+	// 赠课不参与退款折算：可退课时 = max(0, 总课时 - 赠课 - 已消耗)
+	remaining := mp.TotalSessions - mp.UsedSessions - mp.GiftSessions
+	if remaining < 0 {
+		remaining = 0
+	}
 	if remaining <= 0 {
-		return refundCalc{note: "课时已用完，无可退金额"}, errs.Biz("课时已用完，无可退金额")
+		return refundCalc{note: "剩余课时均为赠课或已用完，无可退金额"}, errs.Biz("课时已用完，无可退金额")
 	}
 	amount := int64(remaining) * mp.UnitPrice
 	if amount > order.Amount-order.RefundAmount {
 		amount = order.Amount - order.RefundAmount // 折算价不得高于实付余额
 	}
+	note := fmt.Sprintf("剩余可退 %d 课时 × %d 分/课时", remaining, mp.UnitPrice)
+	if mp.GiftSessions > 0 {
+		note += fmt.Sprintf("（%d 节赠课不参与退款）", mp.GiftSessions)
+	}
 	return refundCalc{
 		amount:    amount,
-		note:      fmt.Sprintf("剩余 %d 课时 × %d 分/课时", remaining, mp.UnitPrice),
+		note:      note,
 		calcType:  "remainder",
 		unitPrice: mp.UnitPrice,
 	}, nil
@@ -629,7 +693,8 @@ func creditSessions(tx *gorm.DB, order *model.Order, now time.Time) error {
 	mp := model.MemberPackage{
 		OwnerID: order.OwnerID, UserID: order.UserID, PackageID: order.PackageID,
 		SkuID: order.SkuID, OrderID: order.ID, PackageTitle: order.Title,
-		TotalSessions: sessions, ValidDays: validDays, UnitPrice: unitPrice,
+		TotalSessions: sessions + order.GiftSessions, GiftSessions: order.GiftSessions,
+		ValidDays: validDays, UnitPrice: unitPrice,
 		Status: model.MPStatusInactive,
 	}
 	if err := tx.Create(&mp).Error; err != nil {
@@ -641,6 +706,16 @@ func creditSessions(tx *gorm.DB, order *model.Order, now time.Time) error {
 		BizType: "order", BizID: order.ID, Remark: "购买入账",
 	}).Error; err != nil {
 		return err
+	}
+	// 赠课券赠送课时：独立流水（唯一键幂等），不与购入混在一条便于对账
+	if order.GiftSessions > 0 {
+		if err := tx.Create(&model.PackageTransaction{
+			MemberPackageID: mp.ID, UserID: order.UserID, SessionsChange: order.GiftSessions,
+			Type: model.TxnTypeGift, IdempotencyKey: "gift:" + order.OrderNo,
+			BizType: "order", BizID: order.ID, Remark: "赠课券赠送",
+		}).Error; err != nil {
+			return err
+		}
 	}
 	return tx.Model(&model.CoursePackage{}).Where("id = ?", order.PackageID).
 		UpdateColumn("sold_count", gorm.Expr("sold_count + 1")).Error

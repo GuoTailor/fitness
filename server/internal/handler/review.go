@@ -17,6 +17,13 @@ type ReviewHandler struct {
 	review *service.ReviewService
 	verify *service.VerifyService
 	notify config.NotifyConfig
+	audit  *service.AuditService
+}
+
+// WithAudit 装配操作审计
+func (h *ReviewHandler) WithAudit(a *service.AuditService) *ReviewHandler {
+	h.audit = a
+	return h
 }
 
 func NewReviewHandler(r *service.ReviewService, v *service.VerifyService, notify config.NotifyConfig) *ReviewHandler {
@@ -184,6 +191,7 @@ func (h *ReviewHandler) AdminAudit(c *gin.Context) {
 		resp.Handle(c, err)
 		return
 	}
+	h.audit.Log(c, "review.audit", "review", id, "评价审核: "+req.Action)
 	resp.OK(c, gin.H{"audited": true})
 }
 

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -98,11 +99,13 @@ func (s *ShopService) PackageDetail(ctx context.Context, id, userID int64) (map[
 	type skuView struct {
 		model.PackageSKU
 		NewcomerEligible bool `json:"newcomerEligible"` // 设有新人价且当前用户可享
+		PromoActive      bool `json:"promoActive"`      // 限时活动价当前生效
 	}
 	skuViews := make([]skuView, 0, len(skus))
 	for _, sk := range skus {
 		v := skuView{PackageSKU: sk}
 		v.NewcomerEligible = newcomerOK && sk.NewcomerPrice != nil && *sk.NewcomerPrice > 0
+		v.PromoActive = PromoActive(&sk, time.Now())
 		skuViews = append(skuViews, v)
 	}
 
@@ -133,8 +136,8 @@ func (s *ShopService) PackageDetail(ctx context.Context, id, userID int64) (map[
 	}, nil
 }
 
-// ListCoaches 在职教练分页
-func (s *ShopService) ListCoaches(ctx context.Context, specialty, keyword string, page, pageSize int) ([]model.Coach, int64, error) {
+// ListCoaches 在职教练分页（可按专长关键词与最低评分筛选）
+func (s *ShopService) ListCoaches(ctx context.Context, specialty, keyword string, minRating float64, page, pageSize int) ([]model.Coach, int64, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -147,6 +150,9 @@ func (s *ShopService) ListCoaches(ctx context.Context, specialty, keyword string
 	}
 	if keyword != "" {
 		q = q.Where("name LIKE ?", "%"+keyword+"%")
+	}
+	if minRating > 0 {
+		q = q.Where("rating_avg >= ?", minRating)
 	}
 	var total int64
 	if err := q.Count(&total).Error; err != nil {

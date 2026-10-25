@@ -23,6 +23,7 @@ func setupBookingDB(t *testing.T) *gorm.DB {
 		&model.MemberPackage{}, &model.PackageTransaction{},
 		&model.Booking{}, &model.GroupClass{}, &model.GroupEnrollment{},
 		&model.Verification{}, &model.TrainingRecord{},
+		&model.CoachLeave{}, &model.GroupWaitlist{},
 	))
 	// 取消规则：开课前 4 小时内取消扣 1 课时
 	require.NoError(t, d.Create(&model.AppConfig{Key: model.CfgBookingCancelPenaltyHours, Value: "4"}).Error)

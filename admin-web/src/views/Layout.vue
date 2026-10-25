@@ -10,6 +10,8 @@
         <el-menu-item index="/coupons">优惠券</el-menu-item>
         <el-menu-item index="/members">学员管理</el-menu-item>
         <el-menu-item index="/reviews">评价管理</el-menu-item>
+        <el-menu-item index="/qa">问答管理</el-menu-item>
+        <el-menu-item v-if="profile.role === 'boss'" index="/audit-logs">操作审计</el-menu-item>
         <el-menu-item index="/schedule">预约课表</el-menu-item>
         <el-menu-item index="/settings">运营配置</el-menu-item>
         <el-menu-item v-for="m in pending" :key="m.path" :index="m.path" disabled>

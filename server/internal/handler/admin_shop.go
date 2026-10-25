@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -18,6 +20,13 @@ type AdminShopHandler struct {
 	db    *gorm.DB
 	cfg   *service.ConfigService
 	owner int64
+	audit *service.AuditService
+}
+
+// WithAudit 装配操作审计
+func (h *AdminShopHandler) WithAudit(a *service.AuditService) *AdminShopHandler {
+	h.audit = a
+	return h
 }
 
 func NewAdminShopHandler(db *gorm.DB, cfg *service.ConfigService, appCfg *config.Config) *AdminShopHandler {
@@ -34,8 +43,25 @@ type skuPayload struct {
 	Price         int64  `json:"price"`
 	OriginalPrice int64  `json:"originalPrice"`
 	NewcomerPrice int64  `json:"newcomerPrice"` // 新人价（分），0=不启用
+	PromoPrice    int64  `json:"promoPrice"`    // 限时活动价（分），0=不启用
+	PromoStart    string `json:"promoStart"`    // 2006-01-02 15:04:05，空=未设
+	PromoEnd      string `json:"promoEnd"`
 	Status        int8   `json:"status"`
 	Sort          int    `json:"sort"`
+}
+
+// parsePromoTime 兼容 "2006-01-02 15:04:05" 与 RFC3339 两种格式
+func parsePromoTime(s string) (*time.Time, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil, nil
+	}
+	for _, layout := range []string{"2006-01-02 15:04:05", time.RFC3339} {
+		if t, err := time.ParseInLocation(layout, s, time.Local); err == nil {
+			return &t, nil
+		}
+	}
+	return nil, errs.BadParam("活动时间格式应为 YYYY-MM-DD HH:mm:ss")
 }
 
 type packagePayload struct {
@@ -120,7 +146,10 @@ func (h *AdminShopHandler) SavePackage(c *gin.Context) {
 	}
 	// M6：价格/课时/有效期零与负数直接拒绝（0 元课包=免费送课入口，负价污染退款折算）
 	// 新人价：启用时必须小于售价且 ≥1 分（每人限购一次，按手机号判重）
-	for _, s := range req.Skus {
+	// 活动价：启用时必须小于售价且 ≥1 分、起止时间齐备且 end > start
+	promoStarts := make([]*time.Time, len(req.Skus))
+	promoEnds := make([]*time.Time, len(req.Skus))
+	for i, s := range req.Skus {
 		if s.Price <= 0 || s.Sessions <= 0 || s.ValidDays <= 0 {
 			resp.Handle(c, errs.BadParam("规格的价格、课时数、有效期必须大于 0"))
 			return
@@ -128,6 +157,27 @@ func (h *AdminShopHandler) SavePackage(c *gin.Context) {
 		if s.NewcomerPrice != 0 && (s.NewcomerPrice < 1 || s.NewcomerPrice >= s.Price) {
 			resp.Handle(c, errs.BadParam("新人价需大于 0 且小于售价"))
 			return
+		}
+		if s.PromoPrice != 0 {
+			if s.PromoPrice < 1 || s.PromoPrice >= s.Price {
+				resp.Handle(c, errs.BadParam("限时活动价需大于 0 且小于售价"))
+				return
+			}
+			st, err := parsePromoTime(s.PromoStart)
+			if err != nil {
+				resp.Handle(c, err)
+				return
+			}
+			en, err := parsePromoTime(s.PromoEnd)
+			if err != nil {
+				resp.Handle(c, err)
+				return
+			}
+			if st == nil || en == nil || !en.After(*st) {
+				resp.Handle(c, errs.BadParam("限时活动价需设置起止时间，且结束时间晚于开始时间"))
+				return
+			}
+			promoStarts[i], promoEnds[i] = st, en
 		}
 	}
 	err := h.db.Transaction(func(tx *gorm.DB) error {
@@ -158,7 +208,7 @@ func (h *AdminShopHandler) SavePackage(c *gin.Context) {
 		// SKU：保留 payload 里带 id 的，新增 id=0 的，缺失的软删（M5：
 		// 物理删除会让已支付订单入账查不到规格；已支付订单一律按下单快照入账）
 		keep := map[int64]bool{}
-		for _, s := range req.Skus {
+		for i, s := range req.Skus {
 			sku := model.PackageSKU{
 				PackageID: pkg.ID, Name: s.Name, Sessions: s.Sessions, ValidDays: s.ValidDays,
 				Price: s.Price, OriginalPrice: s.OriginalPrice, Status: s.Status, Sort: s.Sort,
@@ -166,6 +216,10 @@ func (h *AdminShopHandler) SavePackage(c *gin.Context) {
 			if s.NewcomerPrice > 0 {
 				np := s.NewcomerPrice
 				sku.NewcomerPrice = &np
+			}
+			if s.PromoPrice > 0 {
+				pp := s.PromoPrice
+				sku.PromoPrice, sku.PromoStart, sku.PromoEnd = &pp, promoStarts[i], promoEnds[i]
 			}
 			if s.ID > 0 {
 				sku.ID = s.ID
@@ -204,6 +258,8 @@ func (h *AdminShopHandler) SavePackage(c *gin.Context) {
 		resp.Handle(c, err)
 		return
 	}
+	h.audit.Log(c, "package.save", "package", 0,
+		fmt.Sprintf("保存课包「%s」：%d 个规格", req.Title, len(req.Skus)))
 	resp.OK(c, gin.H{"saved": true})
 }
 
@@ -297,6 +353,8 @@ func (h *AdminShopHandler) VerifyCoachCert(c *gin.Context) {
 		resp.Handle(c, errs.NotFound("教练不存在"))
 		return
 	}
+	h.audit.Log(c, "coach.verify", "coach", id,
+		fmt.Sprintf("教练资质审核: %d", req.Verified))
 	resp.OK(c, gin.H{"verified": req.Verified})
 }
 
@@ -361,6 +419,7 @@ func (h *AdminShopHandler) SaveConfig(c *gin.Context) {
 		model.CfgRefundFullDays: true, model.CfgMemberWarnSessions: true,
 		model.CfgMemberWarnExpireDays: true, model.CfgReviewInviteAfterDays: true,
 		model.CfgReviewAutoApprove: true, model.CfgNewcomerGiftTemplates: true,
+		model.CfgReviewRewardTemplate: true, model.CfgRenewalReminderTemplate: true,
 		model.CfgPrivacyContent: true, model.CfgAgreementContent: true,
 	}
 	if !known[req.Key] {
@@ -371,5 +430,11 @@ func (h *AdminShopHandler) SaveConfig(c *gin.Context) {
 		resp.Handle(c, errs.Server(err, "保存配置失败"))
 		return
 	}
+	valPreview := req.Value
+	if len(valPreview) > 80 {
+		valPreview = valPreview[:80] + "…"
+	}
+	h.audit.Log(c, "config.save", "config", 0,
+		fmt.Sprintf("配置 %s = %s", req.Key, valPreview))
 	resp.OK(c, gin.H{"saved": true})
 }

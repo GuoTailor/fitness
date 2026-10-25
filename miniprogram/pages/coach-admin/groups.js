@@ -7,7 +7,7 @@ const tomorrow = () => {
 }
 
 Page({
-  data: { list: [], pkgs: [], showForm: false, form: null },
+  data: { list: [], pkgs: [], pkgText: '', showForm: false, form: null },
 
   onShow() { this.load() },
 
@@ -18,6 +18,15 @@ Page({
     ])
     list.forEach((g) => { g.timeText = `${g.classDate} ${fmtM(g.startMinute)}` })
     this.setData({ list, pkgs })
+    this.syncPkgText()
+  },
+
+  // 选中课包的展示文案：WXML 表达式不支持箭头函数/方法调用，需在 JS 里算好
+  syncPkgText() {
+    const { pkgs, form } = this.data
+    if (!pkgs.length) return this.setData({ pkgText: '无可售课包' })
+    const cur = pkgs.find((p) => form && p.id === form.packageId)
+    this.setData({ pkgText: cur ? cur.title : '请选择' })
   },
 
   openForm() {
@@ -30,13 +39,20 @@ Page({
         s: '19:00', e: '20:00',
       },
     })
+    this.syncPkgText()
   },
   onInput(e) {
     const f = this.data.form
     f[e.currentTarget.dataset.field] = e.detail.value
     this.setData({ form: f })
   },
-  onPkg(e) { this.data.form.packageId = Number(e.detail.value); this.setData({ form: this.data.form }) },
+  onPkg(e) {
+    // picker 的 detail.value 是 range 下标，映射回课包 id
+    const f = this.data.form
+    f.packageId = (this.data.pkgs[Number(e.detail.value)] || {}).id || 0
+    this.setData({ form: f })
+    this.syncPkgText()
+  },
   onTime(e) {
     const f = this.data.form
     const field = e.currentTarget.dataset.field

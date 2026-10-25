@@ -18,7 +18,7 @@
     <view class="form" catchtap="">
       <view class="f-title">发布团课</view>
       <picker range="{{pkgs}}" range-key="title" bindchange="onPkg">
-        <view class="f-row">课包：{{pkgs.length ? (pkgs.find(p => p.id === form.packageId) || {}).title || '请选择' : '无可售课包'}}</view>
+        <view class="f-row">课包：{{pkgText}}</view>
       </picker>
       <input class="f-input" placeholder="团课标题（如：燃脂训练营）" value="{{form.title}}" bindinput="onInput" data-field="title" />
       <view class="f-row-2">

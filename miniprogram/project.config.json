@@ -1,6 +1,6 @@
 {
   "description": "健身课包售卖小程序",
-  "appid": "touristappid",
+  "appid": "wxa3b127ba499906bf",
   "compileType": "miniprogram",
   "libVersion": "3.4.10",
   "setting": {
@@ -17,12 +17,30 @@
       "ignore": [],
       "disablePlugins": [],
       "outputPath": ""
-    }
+    },
+    "compileWorklet": false,
+    "uglifyFileName": false,
+    "uploadWithSourceMap": true,
+    "packNpmManually": false,
+    "packNpmRelationList": [],
+    "minifyWXSS": true,
+    "minifyWXML": true,
+    "localPlugins": false,
+    "disableUseStrict": false,
+    "useCompilerPlugins": false,
+    "condition": false,
+    "swc": false,
+    "disableSWC": true
   },
   "condition": {},
   "editorSetting": {
     "tabIndent": "insertSpaces",
     "tabSize": 2
   },
-  "projectname": "fitness-miniprogram"
+  "projectname": "fitness-miniprogram",
+  "simulatorPluginLibVersion": {},
+  "packOptions": {
+    "ignore": [],
+    "include": []
+  }
 }

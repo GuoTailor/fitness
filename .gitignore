@@ -34,3 +34,9 @@ server/data/
 
 # 构建产物（仓库根）
 /fitness-server.exe
+
+# client (uni-app 双端用户端)
+client/dist/
+
+# miniprogram devtools 私有配置（本地个性化，不入库）
+miniprogram/project.private.config.json

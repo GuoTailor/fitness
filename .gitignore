@@ -34,6 +34,7 @@ server/data/
 
 # 构建产物（仓库根）
 /fitness-server.exe
+/dist/
 
 # client (uni-app 双端用户端)
 client/dist/

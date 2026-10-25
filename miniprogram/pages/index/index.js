@@ -38,6 +38,7 @@ Page({
     const { type, value } = e.currentTarget.dataset
     if (type === 'package') wx.navigateTo({ url: '/pages/course/detail?id=' + value })
     else if (type === 'coach') wx.navigateTo({ url: '/pages/coach/detail?id=' + value })
+    else if (type === 'groupbuy') wx.navigateTo({ url: '/pages/groupbuy/list?activityId=' + value })
   },
 
   onPkgTap(e) {

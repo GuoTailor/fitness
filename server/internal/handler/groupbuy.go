@@ -91,3 +91,14 @@ func (h *GroupBuyHandler) AdminList(c *gin.Context) {
 	}
 	resp.OK(c, gin.H{"list": items, "total": total})
 }
+
+// ActivityInfo GET /api/v1/group-buy-activities/:id 活动落地信息（公开只读，Banner 用）
+func (h *GroupBuyHandler) ActivityInfo(c *gin.Context) {
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	out, err := h.svc.ActivityPublic(c.Request.Context(), id)
+	if err != nil {
+		resp.Handle(c, err)
+		return
+	}
+	resp.OK(c, out)
+}

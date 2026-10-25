@@ -10,6 +10,7 @@
         <el-menu-item index="/orders">订单管理</el-menu-item>
         <el-menu-item index="/coupons">优惠券</el-menu-item>
         <el-menu-item index="/referrals">老带新邀请</el-menu-item>
+        <el-menu-item index="/group-buy-activities">拼团活动</el-menu-item>
         <el-menu-item index="/group-buys">拼团管理</el-menu-item>
         <el-menu-item index="/members">学员管理</el-menu-item>
         <el-menu-item index="/reviews">评价管理</el-menu-item>

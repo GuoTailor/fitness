@@ -13,6 +13,12 @@
     </template>
     <el-table :data="list" v-loading="loading">
       <el-table-column prop="id" label="ID" width="70" />
+      <el-table-column label="活动" min-width="120">
+        <template #default="{ row }">
+          <span v-if="row.activityTitle">{{ row.activityTitle }}</span>
+          <span v-else style="color: #999">SKU 常开</span>
+        </template>
+      </el-table-column>
       <el-table-column label="课包/规格" min-width="160">
         <template #default="{ row }">SKU#{{ row.skuId }} · 课包#{{ row.packageId }}</template>
       </el-table-column>

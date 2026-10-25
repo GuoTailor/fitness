@@ -64,6 +64,12 @@ export const listReferrals = (params) => http.get('/admin/api/v1/referrals', { p
 // 拼团管理
 export const listGroupBuys = (params) => http.get('/admin/api/v1/group-buys', { params })
 
+// 拼团限时活动
+export const listGroupBuyActivities = () => http.get('/admin/api/v1/group-buy-activities')
+export const saveGroupBuyActivity = (data) =>
+  data.id > 0 ? http.post(`/admin/api/v1/group-buy-activities/${data.id}`, data) : http.post('/admin/api/v1/group-buy-activities', data)
+export const deleteGroupBuyActivity = (id) => http.delete(`/admin/api/v1/group-buy-activities/${id}`)
+
 // 教练入驻审核
 export const listCoachApplications = (params) => http.get('/admin/api/v1/coach-applications', { params })
 export const approveCoachApplication = (id) => http.post(`/admin/api/v1/coach-applications/${id}/approve`, {})

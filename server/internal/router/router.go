@@ -86,6 +86,7 @@ func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.Mini
 	referralH := handler.NewReferralHandler(referralSvc)
 	checkinH := handler.NewCheckinHandler(checkinSvc)
 	gbH := handler.NewGroupBuyHandler(gbSvc)
+	adminGBActH := handler.NewAdminGroupBuyActivityHandler(gbSvc).WithAudit(auditSvc)
 	coachApplyH := handler.NewCoachApplyHandler(coachApplySvc).WithAudit(auditSvc)
 
 	r.GET("/healthz", handler.Ping)
@@ -136,6 +137,7 @@ func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.Mini
 		api.GET("/group-buys/mine", middleware.RequireUser(), gbH.My)
 		api.GET("/group-buys/:id", middleware.RequireUser(), gbH.Detail)
 		api.POST("/group-buys/:id/join", middleware.RequireUser(), gbH.Join)
+		api.GET("/group-buy-activities/:id", gbH.ActivityInfo)
 		// 教练入驻申请
 		api.POST("/coach-applications", middleware.RequireUser(), coachApplyH.Submit)
 		api.GET("/coach-applications/mine", middleware.RequireUser(), coachApplyH.Mine)
@@ -276,6 +278,11 @@ func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.Mini
 		a.GET("/referrals", referralH.AdminList)
 		// 拼团列表
 		a.GET("/group-buys", gbH.AdminList)
+		// 拼团限时活动（查询开放；增删改仅老板）
+		a.GET("/group-buy-activities", adminGBActH.List)
+		a.POST("/group-buy-activities", middleware.RequireBoss(), adminGBActH.Save)
+		a.POST("/group-buy-activities/:id", middleware.RequireBoss(), adminGBActH.Save)
+		a.DELETE("/group-buy-activities/:id", middleware.RequireBoss(), adminGBActH.Delete)
 		// 教练入驻审核（敏感操作，仅老板）
 		a.GET("/coach-applications", coachApplyH.AdminList)
 		a.POST("/coach-applications/:id/approve", middleware.RequireBoss(), coachApplyH.Approve)

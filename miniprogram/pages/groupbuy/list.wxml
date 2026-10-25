@@ -1,6 +1,6 @@
 <view class="page">
   <view class="head card" wx:if="{{sku}}">
-    <view class="title">{{title}}</view>
+    <view class="title">{{actTitle ? '限时拼团 · ' + actTitle : title}}</view>
     <view class="price-row">
       <text class="gp">拼团价 ¥{{sku.groupPrice / 100}}</text>
       <text class="op">单买 ¥{{sku.price / 100}}</text>

@@ -31,7 +31,7 @@ func gbFixture(t *testing.T) *gbEnv {
 		&model.User{}, &model.CoursePackage{}, &model.PackageSKU{},
 		&model.Order{}, &model.Payment{}, &model.Refund{},
 		&model.MemberPackage{}, &model.PackageTransaction{}, &model.AppConfig{},
-		&model.GroupBuy{}, &model.GroupBuyMember{}, &model.NotifyLog{},
+		&model.GroupBuy{}, &model.GroupBuyMember{}, &model.GroupBuyActivity{}, &model.NotifyLog{},
 		&model.CouponTemplate{}, &model.UserCoupon{},
 	))
 	cfgSvc := NewConfigService(d)

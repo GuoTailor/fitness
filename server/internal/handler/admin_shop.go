@@ -440,6 +440,7 @@ func (h *AdminShopHandler) SaveConfig(c *gin.Context) {
 		model.CfgReviewRewardTemplate: true, model.CfgRenewalReminderTemplate: true,
 		model.CfgReferralInviterTemplate: true, model.CfgReferralInviteeTemplate: true,
 		model.CfgCheckinTarget: true, model.CfgCheckinRewardTemplate: true,
+		model.CfgGroupExpireHours: true,
 		model.CfgPrivacyContent: true, model.CfgAgreementContent: true,
 	}
 	if !known[req.Key] {

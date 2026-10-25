@@ -100,12 +100,24 @@ func (s *ShopService) PackageDetail(ctx context.Context, id, userID int64) (map[
 		model.PackageSKU
 		NewcomerEligible bool `json:"newcomerEligible"` // 设有新人价且当前用户可享
 		PromoActive      bool `json:"promoActive"`      // 限时活动价当前生效
+		// 拼团限时活动（P3）：生效时覆盖 SKU 常开拼团配置（上方 GroupPrice/GroupCapacity 已改写）
+		GroupActivityId    int64      `json:"groupActivityId"`
+		GroupActivityTitle string     `json:"groupActivityTitle"`
+		GroupActivityEndAt *time.Time `json:"groupActivityEndAt"`
 	}
 	skuViews := make([]skuView, 0, len(skus))
 	for _, sk := range skus {
 		v := skuView{PackageSKU: sk}
 		v.NewcomerEligible = newcomerOK && sk.NewcomerPrice != nil && *sk.NewcomerPrice > 0
 		v.PromoActive = PromoActive(&sk, time.Now())
+		if act := ActiveActivityFor(ctx, s.db, sk.ID); act != nil {
+			v.GroupPrice = act.GroupPrice
+			v.GroupCapacity = act.GroupCapacity
+			v.GroupActivityId = act.ID
+			v.GroupActivityTitle = act.Title
+			endAt := act.EndAt
+			v.GroupActivityEndAt = &endAt
+		}
 		skuViews = append(skuViews, v)
 	}
 

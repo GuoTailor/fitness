@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """P2 冒烟：老带新裂变（绑定/老客拒绝/首单双端发券/不重发）、打卡挑战（达标领取/重复拒绝）、
 评价奖励券 + 续费提醒券（tasks/run 真库 E2E）、拼团（开团/参团/成团/入账/成团后拒绝）、
+拼团活动层（限时覆盖/落地页/名额上限/下架回落）、
 教练入驻（提交/重复拒绝/审核通过自动绑定 isCoach/驳回留痕）、logout、tasks/run 权限"""
 import json
 import random
@@ -95,6 +96,7 @@ def main():
     b_t = tok(f"mock-user-p3b-{rnd}")     # 被邀请人
     d_t = tok(f"mock-user-p3d-{rnd}")     # 老客/打卡/续费/评价
     e_t = tok(f"mock-user-p3e-{rnd}")     # 入驻申请人
+    f_t = tok(f"mock-user-p3f-{rnd}")     # 活动名额校验
     a_uid = call("GET", "/api/v1/me", a_t)["data"]["user"]["id"]
 
     # ---- 1. 老带新裂变 ----
@@ -190,6 +192,52 @@ def main():
     ok("拼团课时入账", a_mp and a_mp[0]["totalSessions"] == 4)
     admin_gbs = call("GET", "/admin/api/v1/group-buys?status=2", admin_t)["data"]
     ok("后台拼团列表可见", any(g["id"] == g_order_a["groupBuyId"] for g in admin_gbs["list"]))
+
+    # ---- 4b. 拼团活动层 ----
+    from datetime import datetime
+    now_s = datetime.now()
+    act_body = {
+        "title": "P3冒烟限时团", "skuId": gsku["id"], "groupPrice": 49000, "groupCapacity": 2,
+        "startAt": (now_s - timedelta(minutes=2)).strftime("%Y-%m-%d %H:%M:%S"),
+        "endAt": (now_s + timedelta(hours=2)).strftime("%Y-%m-%d %H:%M:%S"),
+        "maxGroups": 1, "expireHours": 0, "status": 1}
+    act_res = call("POST", "/admin/api/v1/group-buy-activities", admin_t, act_body)
+    ok("活动创建成功", act_res["code"] == 0 and act_res["data"]["id"] > 0)
+    act_id = act_res["data"]["id"]
+
+    det = call("GET", f"/api/v1/packages/{gkw['id']}", a_t)["data"]
+    det_sku = [s for s in det["skus"] if s["id"] == gsku["id"]][0]
+    ok("课包详情活动覆盖", det_sku["groupPrice"] == 49000 and det_sku["groupActivityId"] == act_id
+       and det_sku["groupActivityTitle"] == "P3冒烟限时团")
+
+    act_order = call("POST", "/api/v1/group-buys", e_t, {"skuId": gsku["id"]})["data"]
+    ok("活动价开团", act_order["amount"] == 49000 and act_order["groupBuyId"] > 0)
+
+    landing = call("GET", f"/api/v1/group-buy-activities/{act_id}")["data"]
+    ok("活动落地接口", landing["packageId"] == gkw["id"] and landing["skuId"] == gsku["id"]
+       and landing["effectiveText"] == "进行中")
+
+    st, full = call_err("POST", "/api/v1/group-buys", f_t, {"skuId": gsku["id"]})
+    ok("名额满拒绝开团", full["code"] != 0 and "名额已满" in full.get("msg", ""))
+
+    acts = call("GET", "/admin/api/v1/group-buy-activities", admin_t)["data"]["list"]
+    act_row = [x for x in acts if x["id"] == act_id][0]
+    ok("后台活动列表统计", act_row["openedCount"] == 1 and act_row["successCount"] == 0
+       and act_row["effectiveText"] == "进行中")
+
+    gbs_all = call("GET", f"/admin/api/v1/group-buys?status=1", admin_t)["data"]
+    ok("拼团列表带活动标题", any(g["activityTitle"] == "P3冒烟限时团" for g in gbs_all["list"]))
+
+    st, del_full = call_err("DELETE", f"/admin/api/v1/group-buy-activities/{act_id}", admin_t)
+    ok("已开团活动禁删", del_full["code"] != 0 and "不能删除" in del_full.get("msg", ""))
+
+    # 下架 → 课包详情回落 SKU 常开配置
+    call("POST", f"/admin/api/v1/group-buy-activities/{act_id}", admin_t, {
+        **act_body, "id": act_id,
+        "startAt": act_row["startAt"], "endAt": act_row["endAt"], "status": 0})
+    det2 = call("GET", f"/api/v1/packages/{gkw['id']}", a_t)["data"]
+    det2_sku = [s for s in det2["skus"] if s["id"] == gsku["id"]][0]
+    ok("下架后回落 SKU 配置", det2_sku["groupPrice"] == 66000 and det2_sku["groupActivityId"] == 0)
 
     # ---- 5. 教练入驻 ----
     cert = upload(e_t)

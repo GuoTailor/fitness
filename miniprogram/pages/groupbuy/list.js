@@ -1,21 +1,33 @@
 // 拼团列表页：某课包规格的进行中团 + 开新团
+// 支持两种落地方式：pkgId+skuId（课程详情进入）、activityId（首页 Banner 落地）
 const app = getApp()
 const { request } = require('../../utils/request')
 const { payOrder } = require('../../utils/pay')
 
 Page({
   data: {
-    skuId: 0, title: '', sku: null,
+    skuId: 0, title: '', sku: null, actTitle: '',
     groups: [], opening: false,
   },
 
   onLoad(query) {
-    this.setData({ skuId: parseInt(query.skuId || 0, 10), pkgId: parseInt(query.pkgId || 0, 10) })
+    this.setData({
+      skuId: parseInt(query.skuId || 0, 10),
+      pkgId: parseInt(query.pkgId || 0, 10),
+      actId: parseInt(query.activityId || 0, 10),
+    })
     this.load()
   },
 
   async load() {
     await app.ensureLogin()
+    // Banner 落地：先换出 pkgId/skuId
+    if (this.data.actId && !this.data.pkgId) {
+      const act = await request({ url: `/api/v1/group-buy-activities/${this.data.actId}` }).catch(() => null)
+      if (act) {
+        this.setData({ pkgId: act.packageId, skuId: act.skuId, actTitle: act.title })
+      }
+    }
     if (this.data.pkgId) {
       const detail = await request({ url: `/api/v1/packages/${this.data.pkgId}` }).catch(() => null)
       if (detail) {

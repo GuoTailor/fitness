@@ -1,6 +1,6 @@
 <view class="page" wx:if="{{gb}}">
   <view class="card head">
-    <view class="title">{{gb.title}}</view>
+    <view class="title">{{gb.activityTitle ? '限时拼团 · ' + gb.activityTitle : gb.title}}</view>
     <view class="st st-{{gb.status}}">{{gb.statusText || (gb.status === 2 ? '已成团' : (gb.status === 3 ? '未成团' : '报名中'))}}</view>
     <view class="price-row">
       <text class="gp">拼团价 ¥{{gb.priceYuan}}</text>

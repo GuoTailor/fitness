@@ -15,6 +15,7 @@ const routes = [
       { path: 'coupons', component: () => import('../views/Coupons.vue'), meta: { title: '优惠券' } },
       { path: 'referrals', component: () => import('../views/Referrals.vue'), meta: { title: '老带新邀请' } },
       { path: 'group-buys', component: () => import('../views/GroupBuys.vue'), meta: { title: '拼团管理' } },
+      { path: 'group-buy-activities', component: () => import('../views/GroupBuyActivities.vue'), meta: { title: '拼团活动' } },
       { path: 'members', component: () => import('../views/Members.vue'), meta: { title: '学员管理' } },
       { path: 'reviews', component: () => import('../views/Reviews.vue'), meta: { title: '评价管理' } },
       { path: 'qa', component: () => import('../views/Qa.vue'), meta: { title: '问答管理' } },

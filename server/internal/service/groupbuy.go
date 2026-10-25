@@ -29,29 +29,46 @@ func (s *GroupBuyService) WithNotify(n *NotifyService) *GroupBuyService {
 	return s
 }
 
-// Open 开团：建团 + 拼团价订单（返回订单走 prepay；拼团单与成员行同事务）
+// Open 开团：限时活动生效期内按活动配置开团（名额原子扣减），
+// 否则回落 SKU 常开拼团配置；建团 + 拼团价订单（返回订单走 prepay；拼团单与成员行同事务）
 func (s *GroupBuyService) Open(ctx context.Context, userID, skuID int64) (*model.Order, error) {
 	sku, pkg, err := s.loadSku(ctx, skuID)
 	if err != nil {
 		return nil, err
 	}
-	if sku.GroupPrice <= 0 || sku.GroupCapacity < 2 {
+	now := time.Now()
+	act := ActiveActivityFor(ctx, s.db, skuID)
+	if act == nil && (sku.GroupPrice <= 0 || sku.GroupCapacity < 2) {
 		return nil, errs.Biz("该课包未开启拼团")
 	}
-	if sku.GroupPrice >= sku.Price {
+	if act == nil && sku.GroupPrice >= sku.Price {
 		return nil, errs.Biz("拼团价配置异常")
 	}
-	hours := s.cfg.GetInt(ctx, model.CfgGroupExpireHours, 48)
+	price, capacity, actID := sku.GroupPrice, sku.GroupCapacity, int64(0)
+	hours := 0
+	if act != nil {
+		price, capacity, actID = act.GroupPrice, act.GroupCapacity, act.ID
+		hours = act.ExpireHours
+	}
 	if hours <= 0 {
-		hours = 48
+		hours = s.cfg.GetInt(ctx, model.CfgGroupExpireHours, 48)
+		if hours <= 0 {
+			hours = 48
+		}
 	}
 	var order model.Order
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if act != nil {
+			if err := claimActivity(tx, act, now); err != nil {
+				return err
+			}
+		}
 		gb := model.GroupBuy{
 			OwnerID: pkg.OwnerID, SkuID: sku.ID, PackageID: sku.PackageID,
-			Capacity: sku.GroupCapacity, Price: sku.GroupPrice,
+			Capacity: capacity, Price: price,
 			Status: model.GroupBuyEnrolling, LeaderUserID: userID,
-			ExpireAt: time.Now().Add(time.Duration(hours) * time.Hour),
+			ActivityID: actID,
+			ExpireAt:   now.Add(time.Duration(hours) * time.Hour),
 		}
 		if err := tx.Create(&gb).Error; err != nil {
 			return err
@@ -258,6 +275,12 @@ func (s *GroupBuyService) Detail(ctx context.Context, userID, gbID int64) (map[s
 		"status": gb.Status, "expireAt": gb.ExpireAt, "leaderName": leaderName,
 		"joined": false, "myOrderPaid": false,
 	}
+	if gb.ActivityID > 0 {
+		var act model.GroupBuyActivity
+		if s.db.WithContext(ctx).Select("title").First(&act, gb.ActivityID).Error == nil {
+			out["activityTitle"] = act.Title
+		}
+	}
 	// 我在该团的订单（最新一单）
 	var order model.Order
 	if err := s.db.WithContext(ctx).
@@ -299,10 +322,16 @@ func (s *GroupBuyService) AdminList(ctx context.Context, status int, page, pageS
 		statusText := map[int8]string{
 			model.GroupBuyEnrolling: "报名中", model.GroupBuySuccess: "已成团", model.GroupBuyFailed: "未成团",
 		}[gb.Status]
+		activityTitle := ""
+		if gb.ActivityID > 0 {
+			s.db.WithContext(ctx).Model(&model.GroupBuyActivity{}).Select("title").
+				Where("id = ?", gb.ActivityID).Scan(&activityTitle)
+		}
 		out = append(out, map[string]interface{}{
 			"id": gb.ID, "skuId": gb.SkuID, "packageId": gb.PackageID, "capacity": gb.Capacity,
 			"price": gb.Price, "status": gb.Status, "statusText": statusText,
 			"paidCount": paid, "leaderUserId": gb.LeaderUserID,
+			"activityId": gb.ActivityID, "activityTitle": activityTitle,
 			"expireAt": gb.ExpireAt, "successAt": gb.SuccessAt, "createdAt": gb.CreatedAt,
 		})
 	}

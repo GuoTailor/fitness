@@ -77,9 +77,10 @@
             <el-option value="none" label="无跳转" />
             <el-option value="package" label="课包" />
             <el-option value="coach" label="教练" />
+            <el-option value="groupbuy" label="拼团活动" />
           </el-select>
         </el-form-item>
-        <el-form-item label="跳转目标"><el-input v-model="form.linkValue" placeholder="课包/教练 ID" /></el-form-item>
+        <el-form-item label="跳转目标"><el-input v-model="form.linkValue" placeholder="课包/教练/拼团活动 ID" /></el-form-item>
         <el-form-item label="排序"><el-input-number v-model="form.sort" :min="0" /></el-form-item>
         <el-form-item label="状态">
           <el-switch v-model="form.status" :active-value="1" :inactive-value="0" />

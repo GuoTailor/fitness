@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -28,6 +29,11 @@ type ServerConfig struct {
 	Port    int    `yaml:"port"`
 	BaseURL string `yaml:"base_url"` // 对外地址，拼支付回调等
 	Mode    string `yaml:"mode"`     // debug / release
+	// TrustedProxies 信任的反向代理网段（如 nginx 所在本机 ["127.0.0.1"]）。
+	// 空 = 不信任任何代理头，ClientIP 一律取直连地址（P0-5：防 XFF 伪造绕过限流）
+	TrustedProxies []string `yaml:"trusted_proxies"`
+	// CORSOrigins 允许跨域的 Origin 白名单（admin-web 本地开发等），空 = 不放行跨域
+	CORSOrigins []string `yaml:"cors_origins"`
 }
 
 type DBConfig struct {
@@ -85,7 +91,11 @@ type VideoConfig struct {
 // Load 按顺序合并：config.yaml -> config.local.yaml -> 环境变量（DB_PASSWORD / JWT_SECRET）
 func Load(path string) (*Config, error) {
 	cfg := &Config{
-		Server: ServerConfig{Port: 8080, Mode: "debug", BaseURL: "http://localhost:8080"},
+		Server: ServerConfig{
+			Port: 8080, Mode: "debug", BaseURL: "http://localhost:8080",
+			// 开发默认放行 vite dev server；release 部署在 nginx 后同源，无需跨域
+			CORSOrigins: []string{"http://localhost:5173", "http://127.0.0.1:5173"},
+		},
 		DB:     DBConfig{Host: "10.96.158.189", Port: 3306, Username: "fitness", Database: "fitness"},
 		JWT:    JWTConfig{Secret: "dev-insecure-secret", ExpireHours: 24 * 30},
 		WeChat: WeChatConfig{Mock: true},
@@ -124,6 +134,37 @@ func loadYAML(path string, out *Config) error {
 	}
 	if err := yaml.Unmarshal(data, out); err != nil {
 		return fmt.Errorf("parse config %s: %w", path, err)
+	}
+	return nil
+}
+
+// defaultJWTSecret 弱默认值，release 模式禁止使用（L1）
+const defaultJWTSecret = "dev-insecure-secret"
+
+// ValidateForRelease 上线门禁（L1/L2/L3/M12）：release 模式下弱 secret、
+// mock 登录/支付、默认管理员密码一律 fail-fast。开发模式不生效。
+func (c *Config) ValidateForRelease() error {
+	if c.Server.Mode != "release" {
+		return nil
+	}
+	var problems []string
+	if c.JWT.Secret == "" || c.JWT.Secret == defaultJWTSecret {
+		problems = append(problems, "jwt.secret 不能为空或使用开发默认值")
+	}
+	if len(c.JWT.Secret) < 16 {
+		problems = append(problems, "jwt.secret 至少 16 位")
+	}
+	if c.WeChat.Mock {
+		problems = append(problems, "wechat.mock 必须关闭（mock 登录可冒充任意用户）")
+	}
+	if c.Pay.Mock {
+		problems = append(problems, "pay.mock 必须关闭（mock 支付=免费入账）")
+	}
+	if os.Getenv("ADMIN_INIT_PASSWORD") == "" {
+		problems = append(problems, "必须通过环境变量 ADMIN_INIT_PASSWORD 提供管理员初始密码")
+	}
+	if len(problems) > 0 {
+		return fmt.Errorf("release 模式配置检查未通过：%s", strings.Join(problems, "；"))
 	}
 	return nil
 }

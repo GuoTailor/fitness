@@ -20,7 +20,7 @@ func NewPayHandler(o *service.OrderService, p wechat.PaymentProvider) *PayHandle
 }
 
 // Notify POST /api/v1/pay/notify
-// 验签 + 解密 → HandlePaySuccess（条件 UPDATE 幂等，微信重放安全）
+// 验签 + 解密 → 金额比对 → HandlePaySuccess（条件 UPDATE 幂等，微信重放安全）
 func (h *PayHandler) Notify(c *gin.Context) {
 	real, ok := h.pay.(*wechat.RealPay)
 	if !ok {
@@ -33,20 +33,32 @@ func (h *PayHandler) Notify(c *gin.Context) {
 		return
 	}
 	var transaction struct {
-		OutTradeNo    string  `json:"out_trade_no"`
-		TransactionId string  `json:"transaction_id"`
-		TradeState    string  `json:"trade_state"`
+		OutTradeNo    string `json:"out_trade_no"`
+		TransactionId string `json:"transaction_id"`
+		TradeState    string `json:"trade_state"`
+		Amount        *struct {
+			Total int64 `json:"total"`
+		} `json:"amount"`
 	}
 	if _, err := nh.ParseNotifyRequest(c.Request.Context(), c.Request, &transaction); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": "FAIL", "message": "验签失败"})
 		return
 	}
-	if transaction.TradeState == "SUCCESS" {
-		if err := h.orders.HandlePaySuccess(c.Request.Context(),
-			transaction.OutTradeNo, transaction.TransactionId, "wechatpay"); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"code": "FAIL", "message": "订单处理失败"})
-			return
-		}
+	raw := "wechatpay"
+	if transaction.TradeState != "SUCCESS" {
+		// 支付失败（CLOSED/PAYERROR 等）留痕后幂等应答，阻止微信无限重试
+		h.orders.MarkPayFailedByOrderNo(c.Request.Context(), transaction.OutTradeNo, raw)
+		c.JSON(http.StatusOK, gin.H{"code": "SUCCESS", "message": "成功"})
+		return
+	}
+	paid := int64(0)
+	if transaction.Amount != nil {
+		paid = transaction.Amount.Total // M1：回调金额与订单实付比对
+	}
+	if err := h.orders.HandlePaySuccess(c.Request.Context(),
+		transaction.OutTradeNo, transaction.TransactionId, raw, paid); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "FAIL", "message": "订单处理失败"})
+		return
 	}
 	c.JSON(http.StatusOK, gin.H{"code": "SUCCESS", "message": "成功"})
 }

@@ -56,12 +56,19 @@ func (s *NotifyService) Send(ctx context.Context, userID int64, scene string, bi
 	return true, nil
 }
 
+// markFail 发送失败：删除记录释放 (user, scene, biz) 键位，让定时任务下次扫描重发；
+// 否则失败的那次恰好是唯一触达机会（uk 占位后永远不再发送）。
 func (s *NotifyService) markFail(ctx context.Context, id int64, msg string) {
 	if len(msg) > 250 {
 		msg = msg[:250]
 	}
-	s.db.WithContext(ctx).Model(&model.NotifyLog{}).
-		Where("id = ?", id).Updates(map[string]interface{}{"status": "fail", "err_msg": msg})
+	if err := s.db.WithContext(ctx).
+		Where("id = ? AND status = ?", id, "sent").
+		Updates(map[string]interface{}{"status": "fail", "err_msg": msg}).Error; err != nil {
+		return
+	}
+	s.db.WithContext(ctx).Where("id = ? AND status = ?", id, "fail").Delete(&model.NotifyLog{})
+	log.Printf("[notify] 发送失败已记录并释放重发键位: %s", msg)
 }
 
 // tryNotify 业务内发送：失败只打日志，不影响主流程返回值。

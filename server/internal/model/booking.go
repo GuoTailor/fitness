@@ -110,6 +110,7 @@ type GroupEnrollment struct {
 	UserID          int64      `gorm:"uniqueIndex:uk_ge;index:idx_ge_user" json:"userId"`
 	MemberPackageID int64      `json:"memberPackageId"`
 	Status          string     `gorm:"size:16;default:enrolled;index:idx_ge_user" json:"status"`
+	EnrollSeq       int        `gorm:"default:1" json:"enrollSeq"` // 报名世代：quit→enrolled 复用行时+1，幂等键带世代防撞（P0-4）
 	QuitTime        *time.Time `json:"quitTime"`
 	CreatedAt       time.Time  `json:"createdAt"`
 	UpdatedAt       time.Time  `json:"updatedAt"`

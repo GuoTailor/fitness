@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"gorm.io/gorm"
@@ -180,6 +181,9 @@ func (s *GroupService) Enroll(ctx context.Context, classID, userID, memberPackag
 	if mp.Status != model.MPStatusInactive && mp.Status != model.MPStatusActive {
 		return nil, errs.Biz("该课包当前状态不可用")
 	}
+	if mp.ExpireDate != nil && mp.ExpireDate.Format("2006-01-02") < time.Now().Format("2006-01-02") {
+		return nil, errs.Biz("该课包已过期") // M3：状态未及时清扫时按有效期硬拒
+	}
 	if mp.PackageID != gc.PackageID {
 		return nil, errs.Biz("请使用该团课对应课包的课时报名")
 	}
@@ -189,48 +193,56 @@ func (s *GroupService) Enroll(ctx context.Context, classID, userID, memberPackag
 
 	var enrollment model.GroupEnrollment
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// 复用行（quit → enrolled）或新建；同课同人唯一
+		// 复用行（quit → enrolled）或新建；同课同人唯一。
+		// 复用时 enroll_seq+1（P0-4）：扣次/返还幂等键带世代，重报不再撞键
 		if err := tx.Where("group_class_id = ? AND user_id = ?", classID, userID).First(&enrollment).Error; err == nil {
-			if enrollment.Status == model.GEStatusEnrolled || enrollment.Status == model.GEStatusVerified {
-				return errs.Conflict("你已报名该团课")
-			}
-			res := tx.Model(&model.GroupEnrollment{}).
-				Where("id = ? AND status = ?", enrollment.ID, model.GEStatusQuit).
-				Updates(map[string]interface{}{
-					"status": model.GEStatusEnrolled, "quit_time": nil, "member_package_id": memberPackageID,
-				})
-			if res.RowsAffected == 0 {
-				return errs.Conflict("报名状态变化，请刷新")
-			}
-		} else {
-			enrollment = model.GroupEnrollment{
-				GroupClassID: classID, UserID: userID, MemberPackageID: memberPackageID,
-				Status: model.GEStatusEnrolled,
-			}
-			if err := tx.Create(&enrollment).Error; err != nil {
-				if isDuplicateKey(err) {
+				if enrollment.Status == model.GEStatusEnrolled || enrollment.Status == model.GEStatusVerified {
 					return errs.Conflict("你已报名该团课")
 				}
-				return err
+				nextSeq := enrollment.EnrollSeq + 1
+				res := tx.Model(&model.GroupEnrollment{}).
+					Where("id = ? AND status = ? AND enroll_seq = ?", enrollment.ID, model.GEStatusQuit, enrollment.EnrollSeq).
+					Updates(map[string]interface{}{
+						"status": model.GEStatusEnrolled, "quit_time": nil,
+						"member_package_id": memberPackageID, "enroll_seq": nextSeq,
+					})
+				if res.Error != nil {
+					return res.Error
+				}
+				if res.RowsAffected == 0 {
+					return errs.Conflict("报名状态变化，请刷新")
+				}
+				enrollment.EnrollSeq = nextSeq
+			} else {
+				enrollment = model.GroupEnrollment{
+					GroupClassID: classID, UserID: userID, MemberPackageID: memberPackageID,
+					Status: model.GEStatusEnrolled, EnrollSeq: 1,
+				}
+				if err := tx.Create(&enrollment).Error; err != nil {
+					if isDuplicateKey(err) {
+						return errs.Conflict("你已报名该团课")
+					}
+					return err
+				}
 			}
-		}
-		// 乐观锁防超卖：占位成功才算报上
-		res := tx.Model(&model.GroupClass{}).
-			Where("id = ? AND status = ? AND enrolled_count < capacity", classID, model.GCStatusEnrolling).
-			Updates(map[string]interface{}{
-				"enrolled_count": gorm.Expr("enrolled_count + 1"),
-				"status":         gorm.Expr("CASE WHEN enrolled_count + 1 >= capacity THEN 'fulfilled' ELSE 'enrolling' END"),
-			})
-		if res.Error != nil {
-			return res.Error
-		}
-		if res.RowsAffected == 0 {
-			return errs.Conflict("名额已满")
-		}
-		// 扣次（幂等键含 enrollment ID）
-		return deductOne(tx, &mp, model.TxnTypeDeduct, fmt.Sprintf("group_deduct:%d", enrollment.ID),
-			"group_enrollment", enrollment.ID, "团课报名扣次")
-	})
+			// 乐观锁防超卖：占位成功才算报上
+			res := tx.Model(&model.GroupClass{}).
+				Where("id = ? AND status = ? AND enrolled_count < capacity", classID, model.GCStatusEnrolling).
+				Updates(map[string]interface{}{
+					"enrolled_count": gorm.Expr("enrolled_count + 1"),
+					"status":         gorm.Expr("CASE WHEN enrolled_count + 1 >= capacity THEN 'fulfilled' ELSE 'enrolling' END"),
+				})
+			if res.Error != nil {
+				return res.Error
+			}
+			if res.RowsAffected == 0 {
+				return errs.Conflict("名额已满")
+			}
+			// 扣次（幂等键 = 报名 ID + 世代）
+			return deductOne(tx, &mp, model.TxnTypeDeduct,
+				fmt.Sprintf("group_deduct:%d:%d", enrollment.ID, enrollment.EnrollSeq),
+				"group_enrollment", enrollment.ID, "团课报名扣次")
+		})
 	if err != nil {
 		return nil, err
 	}
@@ -265,16 +277,22 @@ func (s *GroupService) Quit(ctx context.Context, classID, userID int64) error {
 		if res.RowsAffected == 0 {
 			return errs.Conflict("状态变化，请刷新")
 		}
-		// 释放名额，满员团课回到报名中
+		// 释放名额；仅报名中/满员状态回到「报名中」（E5：closed/finished/cancelled 不复活）
 		tx.Model(&model.GroupClass{}).
-			Where("id = ? AND enrolled_count > 0", classID).
+			Where("id = ? AND enrolled_count > 0 AND status IN ?", classID,
+				[]string{model.GCStatusEnrolling, model.GCStatusFulfilled}).
 			Updates(map[string]interface{}{
 				"enrolled_count": gorm.Expr("enrolled_count - 1"),
 				"status":         model.GCStatusEnrolling,
 			})
+		// 作废未核销的核销码（对照私教取消的完整撤销）
+		tx.Model(&model.Verification{}).
+			Where("biz_type = ? AND enrollment_id = ? AND status = ?", "group", ge.ID, model.VerifyStatusPending).
+			Update("status", model.VerifyStatusExpired)
 		var mp model.MemberPackage
 		if err := tx.First(&mp, ge.MemberPackageID).Error; err == nil && mp.Status != model.MPStatusRefunded {
-			return returnOne(tx, &mp, fmt.Sprintf("group_refund:%d", ge.ID), "group_enrollment", ge.ID, "退出团课返还")
+			return returnOne(tx, &mp, fmt.Sprintf("group_refund:%d:%d", ge.ID, ge.EnrollSeq),
+				"group_enrollment", ge.ID, "退出团课返还")
 		}
 		return nil
 	})
@@ -298,16 +316,29 @@ func (s *GroupService) CancelByCoach(ctx context.Context, classID, coachID int64
 	}
 	var enrollments []model.GroupEnrollment
 	s.db.WithContext(ctx).Where("group_class_id = ? AND status = ?", classID, model.GEStatusEnrolled).Find(&enrollments)
+	// E6：逐人返还失败不再静默吞掉——收集失败并提示人工介入
+	failed := 0
 	for _, ge := range enrollments {
-		_ = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 			tx.Model(&model.GroupEnrollment{}).Where("id = ? AND status = ?", ge.ID, model.GEStatusEnrolled).
 				Update("status", model.GEStatusQuit)
+			// 作废未核销的核销码
+			tx.Model(&model.Verification{}).
+				Where("biz_type = ? AND enrollment_id = ? AND status = ?", "group", ge.ID, model.VerifyStatusPending).
+				Update("status", model.VerifyStatusExpired)
 			var mp model.MemberPackage
 			if err := tx.First(&mp, ge.MemberPackageID).Error; err == nil && mp.Status != model.MPStatusRefunded {
 				return returnOne(tx, &mp, fmt.Sprintf("group_cancel:%d:%d", classID, ge.UserID), "group_class", classID, "团课取消返还")
 			}
 			return nil
 		})
+		if err != nil {
+			failed++
+			log.Printf("[group] 团课 %d 取消时学员 %d 课时返还失败: %v", classID, ge.UserID, err)
+		}
+	}
+	if failed > 0 {
+		return errs.Biz(fmt.Sprintf("%d 名学员的课时返还失败，请重试取消或人工核对流水", failed))
 	}
 	return nil
 }

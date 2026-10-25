@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"gorm.io/gorm"
@@ -39,7 +40,8 @@ func genRefundNo() string {
 	return "RF" + time.Now().Format("20060102150405") + hex.EncodeToString(b)
 }
 
-// Create 下单（P0 coupon 必须为 0，P1 接券系统）
+// Create 下单（P0 coupon 必须为 0，P1 接券系统）。
+// 下单即快照 SKU 的课时/有效期/单价（M5）：后台删改规格不影响本单入账与退款。
 func (s *OrderService) Create(ctx context.Context, userID int64, skuID int64, couponID int64) (*model.Order, error) {
 	if couponID != 0 {
 		return nil, errs.Biz("优惠券功能即将上线，敬请期待")
@@ -48,9 +50,16 @@ func (s *OrderService) Create(ctx context.Context, userID int64, skuID int64, co
 	if err := s.db.WithContext(ctx).Where("id = ? AND status = 1", skuID).First(&sku).Error; err != nil {
 		return nil, errs.NotFound("课包规格不存在或已停售")
 	}
+	if sku.Price <= 0 || sku.Sessions <= 0 || sku.ValidDays <= 0 {
+		return nil, errs.BadParam("课包规格数据异常，请联系店家") // M6 兜底：脏 SKU 不可下单
+	}
 	var pkg model.CoursePackage
 	if err := s.db.WithContext(ctx).Where("id = ? AND status = 1", sku.PackageID).First(&pkg).Error; err != nil {
 		return nil, errs.NotFound("课包不存在或已下架")
+	}
+	unitPrice := int64(0)
+	if sku.Sessions > 0 {
+		unitPrice = sku.Price / int64(sku.Sessions)
 	}
 	order := model.Order{
 		OrderNo:   genOrderNo(),
@@ -61,20 +70,25 @@ func (s *OrderService) Create(ctx context.Context, userID int64, skuID int64, co
 		Title:     fmt.Sprintf("%s·%s", pkg.Title, sku.Name),
 		Amount:    sku.Price,
 		Status:    model.OrderStatusPending,
+		SkuSessions:   sku.Sessions,
+		SkuValidDays:  sku.ValidDays,
+		SkuUnitPrice:  unitPrice,
 	}
-	if err := s.db.WithContext(ctx).Create(&order).Error; err != nil {
+	// 订单与支付单同事务创建（M11）：避免只写一半
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&order).Error; err != nil {
+			return err
+		}
+		return tx.Create(&model.Payment{OrderID: order.ID, Amount: order.Amount, Status: "created"}).Error
+	}); err != nil {
 		return nil, errs.Server(err, "创建订单失败")
-	}
-	if err := s.db.WithContext(ctx).Create(&model.Payment{
-		OrderID: order.ID, Amount: order.Amount, Status: "created",
-	}).Error; err != nil {
-		return nil, errs.Server(err, "创建支付单失败")
 	}
 	return &order, nil
 }
 
-// Prepay 发起支付。mock 模式：直接把该单置为已支付（走 HandlePaySuccess 幂等链路）。
-func (s *OrderService) Prepay(ctx context.Context, orderID, userID int64, openid string) (*wechat.PrepayResult, error) {
+// Prepay 发起支付。openid 一律取登录用户的服务端记录（E2：不信任客户端传入）。
+// mock 模式：直接把该单置为已支付（走 HandlePaySuccess 幂等链路）。
+func (s *OrderService) Prepay(ctx context.Context, orderID, userID int64) (*wechat.PrepayResult, error) {
 	order, err := s.getOwnedOrder(ctx, orderID, userID)
 	if err != nil {
 		return nil, err
@@ -82,13 +96,17 @@ func (s *OrderService) Prepay(ctx context.Context, orderID, userID int64, openid
 	if order.Status != model.OrderStatusPending {
 		return nil, errs.Biz("订单当前状态不可支付")
 	}
-	res, err := s.pay.Prepay(ctx, order.OrderNo, openid, order.Amount, order.Title)
+	var user model.User
+	if err := s.db.WithContext(ctx).Select("id", "openid").First(&user, userID).Error; err != nil {
+		return nil, errs.NotFound("用户不存在")
+	}
+	res, err := s.pay.Prepay(ctx, order.OrderNo, user.OpenID, order.Amount, order.Title)
 	if err != nil {
 		return nil, errs.Wrap(errs.CodeBiz, "发起支付失败", err)
 	}
 	if res.MockPaid {
 		// 模拟微信回调：直接进入支付成功链路（幂等，重复调用安全）
-		if err := s.HandlePaySuccess(ctx, order.OrderNo, "mocktxn-"+order.OrderNo, "mock"); err != nil {
+		if err := s.HandlePaySuccess(ctx, order.OrderNo, "mocktxn-"+order.OrderNo, "mock", order.Amount); err != nil {
 			return nil, err
 		}
 	}
@@ -115,7 +133,8 @@ func (s *OrderService) MyOrders(ctx context.Context, userID int64, page, pageSiz
 	return orders, total, nil
 }
 
-// ApplyRefund 学员申请退款：仅已支付订单；金额由后台审核时按规则计算
+// ApplyRefund 学员申请退款：仅已支付订单；金额由后台审核时按规则计算。
+// 闸门与建退款单同事务（E9）：建单失败订单不会卡在 refunding。
 func (s *OrderService) ApplyRefund(ctx context.Context, orderID, userID int64, reason string) (*model.Refund, error) {
 	order, err := s.getOwnedOrder(ctx, orderID, userID)
 	if err != nil {
@@ -130,73 +149,81 @@ func (s *OrderService) ApplyRefund(ctx context.Context, orderID, userID int64, r
 	if order.Status != model.OrderStatusPaid {
 		return nil, errs.Biz("当前订单状态不可申请退款")
 	}
-	// 状态闸门：paid → refunding（并发防重）
-	res := s.db.WithContext(ctx).Model(&model.Order{}).
-		Where("id = ? AND status = ?", orderID, model.OrderStatusPaid).
-		Update("status", model.OrderStatusRefund)
-	if res.RowsAffected == 0 {
-		return nil, errs.Conflict("重复提交，请刷新查看")
-	}
 	refund := model.Refund{
 		RefundNo: genRefundNo(), OrderID: order.ID, UserID: userID,
 		Reason: reason, Status: model.RefundStatusPending,
 	}
-	if err := s.db.WithContext(ctx).Create(&refund).Error; err != nil {
+	// 状态闸门 paid → refunding（并发防重）+ 建退款单，同一事务
+	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&model.Order{}).
+			Where("id = ? AND status = ?", orderID, model.OrderStatusPaid).
+			Update("status", model.OrderStatusRefund)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return errs.Conflict("重复提交，请刷新查看")
+		}
+		if err := tx.Create(&refund).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
 		return nil, errs.Server(err, "创建退款单失败")
 	}
 	return &refund, nil
 }
 
+// refundCalc 退款金额计算结果（审批时快照一并落库，P0-3）
+type refundCalc struct {
+	amount    int64
+	note      string
+	calcType  string // full / remainder / full_no_mp
+	unitPrice int64  // 折算单价快照（全额退时记录订单快照价，仅存证）
+}
+
 // calcRefundAmount 退款金额规则：
-// 未开卡且支付未超过 refund.full_days 天 → 全额；
-// 否则按「剩余课时 × 单课时快照价」折算（未开卡剩余=全部课时）。
-func (s *OrderService) calcRefundAmount(ctx context.Context, order *model.Order, mp *model.MemberPackage) (int64, string, error) {
+// 无课时账户 → 全额；未开卡且支付未超过 refund.full_days 天 → 全额；
+// 否则按「剩余课时 × 单课时快照价」折算。以调用时的最新余额为准（事务内重读）。
+func (s *OrderService) calcRefundAmount(ctx context.Context, order *model.Order, mp *model.MemberPackage) (refundCalc, error) {
 	fullDays := s.cfg.GetInt(ctx, model.CfgRefundFullDays, 7)
 	if mp == nil {
-		return order.Amount, "无课时账户，全额退", nil
+		return refundCalc{amount: order.Amount, note: "无课时账户，全额退",
+			calcType: "full_no_mp", unitPrice: order.SkuUnitPrice}, nil
 	}
 	if mp.Status == model.MPStatusInactive && order.PayTime != nil &&
 		time.Since(*order.PayTime) <= time.Duration(fullDays)*24*time.Hour {
-		return order.Amount, fmt.Sprintf("未开卡且在 %d 天内，全额退", fullDays), nil
+		return refundCalc{amount: order.Amount, note: fmt.Sprintf("未开卡且在 %d 天内，全额退", fullDays),
+			calcType: "full", unitPrice: order.SkuUnitPrice}, nil
 	}
 	remaining := mp.TotalSessions - mp.UsedSessions
 	if remaining <= 0 {
-		return 0, "课时已用完，无可退金额", errs.Biz("课时已用完，无可退金额")
+		return refundCalc{note: "课时已用完，无可退金额"}, errs.Biz("课时已用完，无可退金额")
 	}
 	amount := int64(remaining) * mp.UnitPrice
 	if amount > order.Amount-order.RefundAmount {
 		amount = order.Amount - order.RefundAmount // 折算价不得高于实付余额
 	}
-	return amount, fmt.Sprintf("剩余 %d 课时 × %d 分/课时", remaining, mp.UnitPrice), nil
+	return refundCalc{
+		amount:    amount,
+		note:      fmt.Sprintf("剩余 %d 课时 × %d 分/课时", remaining, mp.UnitPrice),
+		calcType:  "remainder",
+		unitPrice: mp.UnitPrice,
+	}, nil
 }
 
-// ApproveRefund 后台同意退款：计算金额 → 回收课时 → 订单 refunded → 退款单 refunded（mock 即时到账）
+// ApproveRefund 后台同意退款。
+// 顺序（P0-2/P0-3）：先抢 pending→approved 闸门（与拒绝互斥，杜绝"先打款后被拒"）→
+// 事务内重读订单/课包、重算金额并落库（amount + 审批快照）+ 回收课时（条件更新绑定
+// 读取时的余额，防打款窗口期消耗导致超退）→ 提交后再发起微信退款（out_refund_no
+// 幂等，失败不回滚本地，由轮询任务重试）→ 查询推进终态（mock 恒 SUCCESS 即时 refunded）。
 func (s *OrderService) ApproveRefund(ctx context.Context, refundID, adminID int64) (*model.Refund, error) {
 	var refund model.Refund
 	if err := s.db.WithContext(ctx).First(&refund, refundID).Error; err != nil {
 		return nil, errs.NotFound("退款单不存在")
 	}
-	var order model.Order
-	if err := s.db.WithContext(ctx).First(&order, refund.OrderID).Error; err != nil {
-		return nil, errs.NotFound("订单不存在")
-	}
-	var mp model.MemberPackage
-	hasMP := s.db.WithContext(ctx).Where("order_id = ?", order.ID).First(&mp).Error == nil
-
-	amount, note, err := s.calcRefundAmount(ctx, &order, &mp)
-	if err != nil {
-		// 无可退金额：回滚为拒绝
-		s.db.WithContext(ctx).Model(&model.Refund{}).Where("id = ?", refundID).
-			Updates(map[string]interface{}{"status": model.RefundStatusRejected, "reject_reason": note})
-		return nil, err
-	}
-
-	// 微信侧先发起退款（out_refund_no 幂等，重试安全）；失败保持 pending 供重试
-	if err := s.pay.Refund(ctx, refund.RefundNo, order.OrderNo, amount, order.Amount, refund.Reason); err != nil {
-		return nil, errs.Wrap(errs.CodeBiz, "微信退款发起失败，请稍后重试", err)
-	}
-
-	// 状态闸门 pending → approved
+	// 1) 抢闸门：pending → approved
 	res := s.db.WithContext(ctx).Model(&model.Refund{}).
 		Where("id = ? AND status = ?", refundID, model.RefundStatusPending).
 		Updates(map[string]interface{}{"status": model.RefundStatusApproved, "admin_id": adminID})
@@ -204,9 +231,37 @@ func (s *OrderService) ApproveRefund(ctx context.Context, refundID, adminID int6
 		return nil, errs.Conflict("该退款单已被处理")
 	}
 
-	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// 回收剩余课时（幂等键 per 退款单）
-		if hasMP && mp.Status != model.MPStatusRefunded {
+	// 2) 事务：重读重算 + 快照落库 + 回收课时
+	var order model.Order
+	var calc refundCalc
+	var calcErr error
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.First(&order, refund.OrderID).Error; err != nil {
+			return errs.NotFound("订单不存在")
+		}
+		var m model.MemberPackage
+		var mp *model.MemberPackage
+		if err := tx.Where("order_id = ?", order.ID).First(&m).Error; err == nil {
+			mp = &m
+		} else if err != gorm.ErrRecordNotFound {
+			return errs.Server(err, "查询课时账户失败") // E10：非 NotFound 不再吞成"全额退"
+		}
+
+		calc, calcErr = s.calcRefundAmount(ctx, &order, mp)
+		if calcErr != nil {
+			// 无可退金额：补偿写（退款单拒绝、订单回 paid）需提交生效，
+			// 事务内 return err 会整体回滚，故置标记后在事务外返回错误
+			tx.Model(&model.Refund{}).Where("id = ?", refundID).
+				Updates(map[string]interface{}{"status": model.RefundStatusRejected, "reject_reason": calc.note})
+			tx.Model(&model.Order{}).
+				Where("id = ? AND status = ?", order.ID, model.OrderStatusRefund).
+				Update("status", model.OrderStatusPaid)
+			return nil
+		}
+
+		// 回收剩余课时：条件更新绑定读取时的 used/total——审批期间有并发消耗则影响行数=0
+		reclaimed := 0
+		if mp != nil && mp.Status != model.MPStatusRefunded {
 			remaining := mp.TotalSessions - mp.UsedSessions
 			if remaining > 0 {
 				if err := tx.Create(&model.PackageTransaction{
@@ -217,33 +272,118 @@ func (s *OrderService) ApproveRefund(ctx context.Context, refundID, adminID int6
 					return err
 				}
 			}
-			if err := tx.Model(&model.MemberPackage{}).Where("id = ?", mp.ID).
+			r2 := tx.Model(&model.MemberPackage{}).
+				Where("id = ? AND status <> ? AND used_sessions = ? AND total_sessions = ?",
+					mp.ID, model.MPStatusRefunded, mp.UsedSessions, mp.TotalSessions).
 				Updates(map[string]interface{}{
 					"used_sessions": gorm.Expr("total_sessions"), "status": model.MPStatusRefunded,
-				}).Error; err != nil {
-				return err
+				})
+			if r2.Error != nil {
+				return r2.Error
 			}
+			if r2.RowsAffected == 0 {
+				var cur model.MemberPackage
+				if err := tx.First(&cur, mp.ID).Error; err == nil && cur.Status == model.MPStatusRefunded {
+					remaining = 0 // 已被回收过（幂等重入）
+				} else {
+					return errs.Conflict("课时余额已变动，请刷新后重新审批")
+				}
+			}
+			reclaimed = remaining
 		}
-		// 订单 refunded + 累计退款额
-		if err := tx.Model(&model.Order{}).Where("id = ?", order.ID).Updates(map[string]interface{}{
-			"status": model.OrderStatusRefunded, "refund_amount": gorm.Expr("refund_amount + ?", amount),
+		// 金额与审批快照落库（P0-3：amount 此前从不落库）
+		if err := tx.Model(&model.Refund{}).Where("id = ?", refundID).Updates(map[string]interface{}{
+			"amount": calc.amount, "unit_price": calc.unitPrice,
+			"reclaimed_sessions": reclaimed, "calc_type": calc.calcType, "reject_reason": calc.note,
 		}).Error; err != nil {
 			return err
 		}
-		// mock 通道即时到账；真实通道 PROCESSING 等，由退款回调/查询推进
-		finalStatus := model.RefundStatusRefunded
-		if st, err := s.pay.QueryRefund(ctx, refund.RefundNo); err == nil && st != "SUCCESS" {
-			finalStatus = model.RefundStatusApproved
-		}
-		return tx.Model(&model.Refund{}).Where("id = ?", refundID).
-			Update("status", finalStatus).Error
+		// 订单累计退款额（订单状态等微信终态再置 refunded）
+		return tx.Model(&model.Order{}).Where("id = ?", order.ID).
+			UpdateColumn("refund_amount", gorm.Expr("refund_amount + ?", calc.amount)).Error
 	})
 	if err != nil {
-		return nil, errs.Server(err, "退款执行失败")
+		return nil, err
 	}
-	refund.Amount = amount
-	refund.Status = model.RefundStatusRefunded
-	return &refund, nil
+	if calcErr != nil {
+		return nil, calcErr // 补偿写已提交（rejected + 订单回 paid）
+	}
+
+	// 3) 事务外发起微信退款（E11：不持锁外呼）。out_refund_no 幂等，可安全重试；
+	//    失败不打回本地状态——轮询任务会重试发起并推进终态
+	refundErr := s.pay.Refund(ctx, refund.RefundNo, order.OrderNo, calc.amount, order.Amount, refund.Reason)
+
+	// 4) 推进终态（mock QueryRefund 恒 SUCCESS → 即时 refunded；真实通道 PROCESSING → 保持 approved 等轮询）
+	if st, qErr := s.pay.QueryRefund(ctx, refund.RefundNo); qErr == nil && st == "SUCCESS" {
+		return s.finalizeRefund(ctx, refundID, order.ID)
+	}
+	if refundErr != nil {
+		return nil, errs.Wrap(errs.CodeBiz, "微信退款发起失败，退款单保持处理中，将由任务自动重试", refundErr)
+	}
+	var out model.Refund
+	s.db.WithContext(ctx).First(&out, refundID)
+	return &out, nil
+}
+
+// PollApprovedRefunds 退款轮询（M4）：处理中的退款单查询微信终态推进；
+// 查询报错（多为从未发起成功）则幂等重试发起。mock 通道恒 SUCCESS 即时推进。
+func (s *OrderService) PollApprovedRefunds(ctx context.Context) (int, error) {
+	var refunds []model.Refund
+	if err := s.db.WithContext(ctx).
+		Where("status = ?", model.RefundStatusApproved).Limit(50).Find(&refunds).Error; err != nil {
+		return 0, err
+	}
+	done := 0
+	for _, r := range refunds {
+		st, qErr := s.pay.QueryRefund(ctx, r.RefundNo)
+		if qErr != nil {
+			// 审批时发起失败的单：out_refund_no 幂等，重试发起
+			var order model.Order
+			if err := s.db.WithContext(ctx).First(&order, r.OrderID).Error; err == nil && r.Amount > 0 {
+				if err := s.pay.Refund(ctx, r.RefundNo, order.OrderNo, r.Amount, order.Amount, r.Reason); err != nil {
+					log.Printf("[refund-poll] 重新发起退款 %s 失败: %v", r.RefundNo, err)
+				}
+			}
+			continue
+		}
+		if st == "SUCCESS" {
+			if _, err := s.finalizeRefund(ctx, r.ID, r.OrderID); err == nil {
+				done++
+			} else {
+				log.Printf("[refund-poll] 退款 %s 终态落库失败: %v", r.RefundNo, err)
+			}
+		}
+	}
+	return done, nil
+}
+
+// finalizeRefund 退款终态：refund approved → refunded、订单 refunding → refunded、销量回退
+func (s *OrderService) finalizeRefund(ctx context.Context, refundID, orderID int64) (*model.Refund, error) {	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&model.Refund{}).
+			Where("id = ? AND status = ?", refundID, model.RefundStatusApproved).
+			Update("status", model.RefundStatusRefunded).Error; err != nil {
+			return err
+		}
+		var order model.Order
+		if err := tx.First(&order, orderID).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&model.Order{}).
+			Where("id = ? AND status = ?", orderID, model.OrderStatusRefund).
+			Update("status", model.OrderStatusRefunded).Error; err != nil {
+			return err
+		}
+		// 展示口径：退款回退销量（CASE 兼容 sqlite，不用 GREATEST）
+		return tx.Model(&model.CoursePackage{}).Where("id = ?", order.PackageID).
+			UpdateColumn("sold_count", gorm.Expr(
+				"CASE WHEN sold_count > 0 THEN sold_count - 1 ELSE 0 END")).Error
+	})
+	if err != nil {
+		return nil, errs.Server(err, "退款终态落库失败")
+	}
+	var out model.Refund
+	s.db.WithContext(ctx).First(&out, refundID)
+	return &out, nil
 }
 
 // RejectRefund 后台拒绝退款：退款单 rejected、订单回 paid
@@ -266,8 +406,11 @@ func (s *OrderService) RejectRefund(ctx context.Context, refundID, adminID int64
 
 // HandlePaySuccess 支付成功统一入口（mock 直调 / 真实回调验签后调）。
 // 每一步都以条件 UPDATE 或唯一键做幂等，重复回调安全。
-func (s *OrderService) HandlePaySuccess(ctx context.Context, orderNo, transactionID, raw string) error {
-	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+// paidAmount 为回调携带的实付金额（M1）：与订单不符时落失败流水并拒绝；
+// 关单在先的迟到回调幂等应答（M2），避免微信无限重试。
+func (s *OrderService) HandlePaySuccess(ctx context.Context, orderNo, transactionID, raw string, paidAmount int64) error {
+	var rejectErr error // 事务内留痕后需要向调用方报错时置值（回调里 return err 会回滚留痕）
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var order model.Order
 		if err := tx.Where("order_no = ?", orderNo).First(&order).Error; err != nil {
 			return errs.NotFound("订单不存在")
@@ -275,6 +418,18 @@ func (s *OrderService) HandlePaySuccess(ctx context.Context, orderNo, transactio
 		if order.Status == model.OrderStatusPaid || order.Status == model.OrderStatusRefund ||
 			order.Status == model.OrderStatusRefunded {
 			return nil // 已处理，幂等返回
+		}
+		if paidAmount > 0 && paidAmount != order.Amount {
+			markPaymentFailed(tx, order.ID, raw)
+			log.Printf("[pay] 回调金额不符：order=%s expect=%d got=%d", orderNo, order.Amount, paidAmount)
+			rejectErr = errs.Biz("回调金额与订单不符")
+			return nil // 提交留痕，错误经 rejectErr 返回
+		}
+		if order.Status == model.OrderStatusClosed {
+			// 超时关单在先的迟到支付：钱停在微信侧待人工处理，先幂等应答止血
+			markPaymentFailed(tx, order.ID, raw)
+			log.Printf("[pay] 迟到回调命中已关单：order=%s txn=%s", orderNo, transactionID)
+			return nil
 		}
 		if order.Status != model.OrderStatusPending {
 			return errs.Biz("订单状态异常，无法入账")
@@ -293,19 +448,49 @@ func (s *OrderService) HandlePaySuccess(ctx context.Context, orderNo, transactio
 			return nil // 并发回调另一条已抢先处理
 		}
 		// 支付流水 created → success（transaction_id 唯一键防重放）
-		if err := tx.Model(&model.Payment{}).
+		payRes := tx.Model(&model.Payment{}).
 			Where("order_id = ? AND status = ?", order.ID, "created").
 			Updates(map[string]interface{}{
 				"transaction_id": transactionID, "status": "success", "raw_notify": raw,
-			}).Error; err != nil {
-			return err
+			})
+		if payRes.Error != nil {
+			return payRes.Error
+		}
+		if payRes.RowsAffected == 0 {
+			// 支付单缺失不阻断入账（订单侧闸门已保证幂等），仅告警（M11）
+			log.Printf("[pay] 订单 %s 支付单缺失，跳过流水更新", orderNo)
 		}
 		// 课时入账：member_package（按订单幂等）+ 购入流水（唯一键幂等）
 		return creditSessions(tx, &order, now)
 	})
+	if err != nil {
+		return err
+	}
+	return rejectErr
 }
 
-// creditSessions 支付成功后的课时入账（独立函数便于单测）
+// markPaymentFailed 支付失败/金额不符/迟到回调的流水留痕（幂等）
+func markPaymentFailed(tx *gorm.DB, orderID int64, raw string) {
+	tx.Model(&model.Payment{}).
+		Where("order_id = ? AND status = ?", orderID, "created").
+		Updates(map[string]interface{}{"status": "failed", "raw_notify": raw})
+}
+
+// MarkPayFailedByOrderNo 非成功回调（CLOSED/PAYERROR 等）的流水留痕（幂等）
+func (s *OrderService) MarkPayFailedByOrderNo(ctx context.Context, orderNo, raw string) {
+	var order model.Order
+	if err := s.db.WithContext(ctx).Select("id").Where("order_no = ?", orderNo).First(&order).Error; err != nil {
+		return
+	}
+	s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		markPaymentFailed(tx, order.ID, raw)
+		return nil
+	})
+}
+
+// creditSessions 支付成功后的课时入账（独立函数便于单测）。
+// 一律以订单 SKU 快照为准（M5）：后台删/改规格不影响已支付订单；
+// 仅 00005 回填前的老订单快照缺失时才回查 SKU 现值兜底。
 func creditSessions(tx *gorm.DB, order *model.Order, now time.Time) error {
 	var exist model.MemberPackage
 	err := tx.Where("order_id = ?", order.ID).First(&exist).Error
@@ -315,30 +500,29 @@ func creditSessions(tx *gorm.DB, order *model.Order, now time.Time) error {
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err
 	}
-	var sku model.PackageSKU
-	if err := tx.First(&sku, order.SkuID).Error; err != nil {
-		// 规格被删时兜底：仅按订单金额建账，单课时价 0（退款按剩余比例）
-		return tx.Create(&model.MemberPackage{
-			OwnerID: order.OwnerID, UserID: order.UserID, PackageID: order.PackageID,
-			SkuID: order.SkuID, OrderID: order.ID, PackageTitle: order.Title,
-			TotalSessions: 0, Status: model.MPStatusInactive,
-		}).Error
+	sessions, validDays, unitPrice := order.SkuSessions, order.SkuValidDays, order.SkuUnitPrice
+	if sessions == 0 {
+		var sku model.PackageSKU
+		if err := tx.First(&sku, order.SkuID).Error; err == nil && sku.Sessions > 0 {
+			sessions = sku.Sessions
+			validDays = sku.ValidDays
+			unitPrice = sku.Price / int64(sku.Sessions)
+		}
 	}
-	unitPrice := int64(0)
-	if sku.Sessions > 0 {
-		unitPrice = sku.Price / int64(sku.Sessions)
+	if sessions == 0 {
+		log.Printf("[order] 订单 %s 无课时快照且 SKU 已不可用，建 0 课时账户待人工处理", order.OrderNo)
 	}
 	mp := model.MemberPackage{
 		OwnerID: order.OwnerID, UserID: order.UserID, PackageID: order.PackageID,
 		SkuID: order.SkuID, OrderID: order.ID, PackageTitle: order.Title,
-		TotalSessions: sku.Sessions, ValidDays: sku.ValidDays, UnitPrice: unitPrice,
+		TotalSessions: sessions, ValidDays: validDays, UnitPrice: unitPrice,
 		Status: model.MPStatusInactive,
 	}
 	if err := tx.Create(&mp).Error; err != nil {
 		return err
 	}
 	if err := tx.Create(&model.PackageTransaction{
-		MemberPackageID: mp.ID, UserID: order.UserID, SessionsChange: sku.Sessions,
+		MemberPackageID: mp.ID, UserID: order.UserID, SessionsChange: sessions,
 		Type: model.TxnTypePurchase, IdempotencyKey: "purchase:" + order.OrderNo,
 		BizType: "order", BizID: order.ID, Remark: "购买入账",
 	}).Error; err != nil {

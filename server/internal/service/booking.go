@@ -124,6 +124,9 @@ func (s *BookingService) Create(ctx context.Context, userID, coachID, memberPack
 	if mp.Status == model.MPStatusExpired {
 		return nil, errs.Biz("该课包已过期")
 	}
+	if mp.ExpireDate != nil && mp.ExpireDate.Format("2006-01-02") < time.Now().Format("2006-01-02") {
+		return nil, errs.Biz("该课包已过期") // M3：状态未及时清扫时按有效期硬拒
+	}
 	if mp.RemainingSessions() < 1 {
 		return nil, errs.Biz("剩余课时不足")
 	}
@@ -238,7 +241,8 @@ func deductOne(tx *gorm.DB, mp *model.MemberPackage, txnType, idemKey, bizType s
 	return nil
 }
 
-// returnOne 返还 1 课时（幂等）
+// returnOne 返还 1 课时（幂等）。已退款账户不动余额（退款回收优先）；
+// 过期账户余额照减（与流水一致）但不复活状态（M3：expired 不翻回 active）。
 func returnOne(tx *gorm.DB, mp *model.MemberPackage, idemKey, bizType string, bizID int64, remark string) error {
 	if err := tx.Create(&model.PackageTransaction{
 		MemberPackageID: mp.ID, UserID: mp.UserID, SessionsChange: 1,
@@ -250,10 +254,11 @@ func returnOne(tx *gorm.DB, mp *model.MemberPackage, idemKey, bizType string, bi
 		return err
 	}
 	res := tx.Model(&model.MemberPackage{}).
-		Where("id = ?", mp.ID).
+		Where("id = ? AND status <> ?", mp.ID, model.MPStatusRefunded).
 		Updates(map[string]interface{}{
 			"used_sessions": gorm.Expr("CASE WHEN used_sessions > 0 THEN used_sessions - 1 ELSE 0 END"),
-			"status":        model.MPStatusActive,
+			"status": gorm.Expr(
+				"CASE WHEN status IN ('inactive','active','exhausted') THEN 'active' ELSE status END"),
 		})
 	return res.Error
 }
@@ -306,40 +311,46 @@ func (s *BookingService) cancel(ctx context.Context, bookingID, userID int64, by
 	if b.Status != model.BookingStatusPending && b.Status != model.BookingStatusConfirmed {
 		return errs.Biz("当前状态不可取消")
 	}
-	// 状态闸门：抢占取消权
-	res := s.db.WithContext(ctx).Model(&model.Booking{}).
-		Where("id = ? AND status IN ?", bookingID,
-			[]string{model.BookingStatusPending, model.BookingStatusConfirmed}).
-		Updates(map[string]interface{}{
-			"status": model.BookingStatusCancelled, "cancel_by": by, "cancel_time": time.Now(),
-		})
-	if res.RowsAffected == 0 {
-		return errs.Conflict("该预约已被处理")
-	}
-	// 释放时段
-	s.db.WithContext(ctx).Model(&model.Booking{}).Where("id = ?", bookingID).
-		Update("slot_token", model.ReleasedSlotToken(bookingID))
-	// 作废未用核销码
-	s.db.WithContext(ctx).Model(&model.Verification{}).
-		Where("booking_id = ? AND status = ?", bookingID, model.VerifyStatusPending).
-		Update("status", model.VerifyStatusCancelled)
-
-	if by == "user" {
-		hours := s.cfg.GetInt(ctx, model.CfgBookingCancelPenaltyHours, 4)
-		if s.classStart(&b).Sub(time.Now()) < time.Duration(hours)*time.Hour {
-			// X 小时内：课时不返还（已扣即罚）
-			s.db.WithContext(ctx).Model(&model.Booking{}).Where("id = ?", bookingID).
-				Update("penalty_sessions", 1)
-			return nil
+	// 单事务完成全部取消动作（M10）：状态闸门 + 释放时段 + 作废核销码 + 返还/罚没，
+	// 中途失败整体回滚，不再出现"已取消但核销码仍有效 / 时段占死"
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&model.Booking{}).
+			Where("id = ? AND status IN ?", bookingID,
+				[]string{model.BookingStatusPending, model.BookingStatusConfirmed}).
+			Updates(map[string]interface{}{
+				"status": model.BookingStatusCancelled, "cancel_by": by, "cancel_time": time.Now(),
+			})
+		if res.Error != nil {
+			return res.Error
 		}
-	}
-	var mp model.MemberPackage
-	if err := s.db.WithContext(ctx).First(&mp, b.MemberPackageID).Error; err == nil && mp.Status != model.MPStatusRefunded {
-		return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if res.RowsAffected == 0 {
+			return errs.Conflict("该预约已被处理")
+		}
+		// 释放时段
+		if err := tx.Model(&model.Booking{}).Where("id = ?", bookingID).
+			Update("slot_token", model.ReleasedSlotToken(bookingID)).Error; err != nil {
+			return err
+		}
+		// 作废未用核销码
+		if err := tx.Model(&model.Verification{}).
+			Where("booking_id = ? AND status = ?", bookingID, model.VerifyStatusPending).
+			Update("status", model.VerifyStatusCancelled).Error; err != nil {
+			return err
+		}
+		// 学员临场取消：课时不返还（已扣即罚）
+		if by == "user" {
+			hours := s.cfg.GetInt(ctx, model.CfgBookingCancelPenaltyHours, 4)
+			if s.classStart(&b).Sub(time.Now()) < time.Duration(hours)*time.Hour {
+				return tx.Model(&model.Booking{}).Where("id = ?", bookingID).
+					Update("penalty_sessions", 1).Error
+			}
+		}
+		var mp model.MemberPackage
+		if err := tx.First(&mp, b.MemberPackageID).Error; err == nil && mp.Status != model.MPStatusRefunded {
 			return returnOne(tx, &mp, "booking_refund:"+fmt.Sprint(bookingID), "booking", bookingID, "取消预约返还")
-		})
-	}
-	return nil
+		}
+		return nil
+	})
 }
 
 func (s *BookingService) classStart(b *model.Booking) time.Time {

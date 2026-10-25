@@ -9,6 +9,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"fitness/internal/auth"
@@ -39,6 +41,10 @@ func main() {
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		log.Fatalf("加载配置失败: %v", err)
+	}
+	// 上线门禁（L1/L2/L3/M12）：release 模式禁止弱 secret / mock 通道 / 默认管理员密码
+	if err := cfg.ValidateForRelease(); err != nil {
+		log.Fatalf("配置不满足上线要求: %v", err)
 	}
 	if cfg.DB.Password == "" {
 		log.Fatal("数据库密码为空：请在 config.local.yaml 或环境变量 DB_PASSWORD 配置")
@@ -89,13 +95,33 @@ func main() {
 	tokens := auth.NewManager(cfg.JWT.Secret, cfg.JWT.ExpireHours)
 	r := router.Build(cfg, gdb, tokens, mp, pay)
 
-	// 定时任务：评价邀请 / 课时与有效期预警（进程内每小时扫描）
-	task.NewRunner(gdb, mp, cfg.Notify).Start(context.Background())
+	// 定时任务：消息触达 + 状态推进（关单/过期/结课/退款轮询），进程内每小时扫描
+	taskCtx, taskCancel := context.WithCancel(context.Background())
+	defer taskCancel()
+	task.NewRunner(gdb, mp, cfg.Notify, pay).Start(taskCtx)
 
+	// HTTP 基线（E1）：超时防慢连接拖垮进程；SIGINT/SIGTERM 优雅停机
 	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", cfg.Server.Port),
-		Handler: r,
+		Addr:         fmt.Sprintf(":%d", cfg.Server.Port),
+		Handler:      r,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  120 * time.Second,
 	}
+	go func() {
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+		<-sig
+		log.Printf("收到退出信号，开始优雅停机…")
+		shutdownCtx, done := context.WithTimeout(context.Background(), 10*time.Second)
+		defer done()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("停机超时: %v", err)
+		}
+		taskCancel()
+		os.Exit(0)
+	}()
+
 	log.Printf("fitness-server %s 监听 :%d（mode=%s wechat.mock=%v pay.mock=%v）",
 		version, cfg.Server.Port, cfg.Server.Mode, cfg.WeChat.Mock, cfg.Pay.Mock)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {

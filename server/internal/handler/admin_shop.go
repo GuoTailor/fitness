@@ -117,6 +117,13 @@ func (h *AdminShopHandler) SavePackage(c *gin.Context) {
 		resp.Handle(c, errs.BadParam("分类必须是 private/group/trial"))
 		return
 	}
+	// M6：价格/课时/有效期零与负数直接拒绝（0 元课包=免费送课入口，负价污染退款折算）
+	for _, s := range req.Skus {
+		if s.Price <= 0 || s.Sessions <= 0 || s.ValidDays <= 0 {
+			resp.Handle(c, errs.BadParam("规格的价格、课时数、有效期必须大于 0"))
+			return
+		}
+	}
 	err := h.db.Transaction(func(tx *gorm.DB) error {
 		var pkg model.CoursePackage
 		isCreate := true
@@ -142,7 +149,8 @@ func (h *AdminShopHandler) SavePackage(c *gin.Context) {
 		if err := tx.Save(&pkg).Error; err != nil {
 			return err
 		}
-		// SKU：保留 payload 里带 id 的，新增 id=0 的，删除缺失的
+		// SKU：保留 payload 里带 id 的，新增 id=0 的，缺失的软删（M5：
+		// 物理删除会让已支付订单入账查不到规格；已支付订单一律按下单快照入账）
 		keep := map[int64]bool{}
 		for _, s := range req.Skus {
 			sku := model.PackageSKU{
@@ -158,9 +166,17 @@ func (h *AdminShopHandler) SavePackage(c *gin.Context) {
 			}
 			keep[sku.ID] = true // 新插入的 sku 此处已带回自增 ID
 		}
-		if err := tx.Where("package_id = ? AND id NOT IN ?", pkg.ID, keysOf(keep)).
-			Delete(&model.PackageSKU{}).Error; err != nil {
-			return err
+		if len(keep) > 0 {
+			if err := tx.Model(&model.PackageSKU{}).
+				Where("package_id = ? AND id NOT IN ?", pkg.ID, keysOf(keep)).
+				Update("status", 0).Error; err != nil {
+				return err
+			}
+		} else {
+			if err := tx.Model(&model.PackageSKU{}).
+				Where("package_id = ?", pkg.ID).Update("status", 0).Error; err != nil {
+				return err
+			}
 		}
 		// 教练关联全量替换
 		if err := tx.Where("package_id = ?", pkg.ID).Delete(&model.CoachPackage{}).Error; err != nil {

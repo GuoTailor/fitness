@@ -35,21 +35,14 @@ func (h *OrderHandler) Create(c *gin.Context) {
 	resp.OK(c, order)
 }
 
-// Prepay POST /api/v1/orders/:id/prepay —— mock 通道直接支付成功并入账
+// Prepay POST /api/v1/orders/:id/prepay —— mock 通道直接支付成功并入账。
+// openid 一律取登录用户的服务端记录（E2），不再接受客户端传入。
 func (h *OrderHandler) Prepay(c *gin.Context) {
 	id, ok := idParam(c, "id")
 	if !ok {
 		return
 	}
-	var req struct {
-		OpenID string `json:"openid"`
-	}
-	_ = c.ShouldBindJSON(&req)
-	if req.OpenID == "" {
-		// 小程序端登录态即 openid 来源；mock 模式下占位即可
-		req.OpenID = "mock-openid"
-	}
-	res, err := h.orders.Prepay(c.Request.Context(), id, middleware.UserID(c), req.OpenID)
+	res, err := h.orders.Prepay(c.Request.Context(), id, middleware.UserID(c))
 	if err != nil {
 		resp.Handle(c, err)
 		return

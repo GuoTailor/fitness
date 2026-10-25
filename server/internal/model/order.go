@@ -27,6 +27,10 @@ type Order struct {
 	PayTime       *time.Time `json:"payTime"`
 	TransactionID string    `gorm:"column:transaction_id;size:64" json:"transactionId"`
 	RefundAmount  int64     `gorm:"default:0" json:"refundAmount"`
+	// 下单时 SKU 快照：后台删/改规格后，入账与退款仍以本单为准（M5）
+	SkuSessions   int       `gorm:"default:0" json:"skuSessions"`
+	SkuValidDays  int       `gorm:"default:0" json:"skuValidDays"`
+	SkuUnitPrice  int64     `gorm:"default:0" json:"skuUnitPrice"`
 	Remark        string    `gorm:"size:255" json:"remark"`
 	CreatedAt     time.Time `json:"createdAt"`
 	UpdatedAt     time.Time `json:"updatedAt"`
@@ -59,19 +63,23 @@ const (
 	RefundStatusFailed   = "failed"
 )
 
-// Refund 退款单
+// Refund 退款单。审批时快照（unit_price/reclaimed_sessions/calc_type）
+// 在事务内重读重算后落库，保证金额与账实一致、可对账（P0-3）。
 type Refund struct {
-	ID           int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	RefundNo     string    `gorm:"column:refund_no;size:32;uniqueIndex" json:"refundNo"`
-	OrderID      int64     `gorm:"index:idx_refund_order" json:"orderId"`
-	UserID       int64     `json:"userId"`
-	Amount       int64     `json:"amount"`
-	Reason       string    `gorm:"size:255" json:"reason"`
-	Status       string    `gorm:"size:16;default:pending" json:"status"`
-	RejectReason string    `gorm:"size:255" json:"rejectReason"`
-	AdminID      int64     `gorm:"default:0" json:"adminId"`
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
+	ID                int64     `gorm:"primaryKey;autoIncrement" json:"id"`
+	RefundNo          string    `gorm:"column:refund_no;size:32;uniqueIndex" json:"refundNo"`
+	OrderID           int64     `gorm:"index:idx_refund_order" json:"orderId"`
+	UserID            int64     `json:"userId"`
+	Amount            int64     `json:"amount"`
+	Reason            string    `gorm:"size:255" json:"reason"`
+	Status            string    `gorm:"size:16;default:pending" json:"status"`
+	RejectReason      string    `gorm:"size:255" json:"rejectReason"`
+	AdminID           int64     `gorm:"default:0" json:"adminId"`
+	UnitPrice         int64     `gorm:"default:0" json:"unitPrice"`             // 审批时快照：单课时折算价(分)
+	ReclaimedSessions int       `gorm:"default:0" json:"reclaimedSessions"`    // 审批时快照：回收课时数
+	CalcType          string    `gorm:"size:16;default:''" json:"calcType"`    // full/remainder/full_no_mp
+	CreatedAt         time.Time `json:"createdAt"`
+	UpdatedAt         time.Time `json:"updatedAt"`
 }
 
 func (Refund) TableName() string { return "refund" }

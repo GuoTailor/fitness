@@ -123,11 +123,11 @@ func RequireAdmin() gin.HandlerFunc {
 	}
 }
 
-// RequireBoss 仅老板
+// RequireBoss 仅老板（退款审批/课时调整/运营配置等资金与规则类操作）
 func RequireBoss() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		claims := claimsOf(c)
-		if claims == nil || claims.Role != auth.RoleAdmin || claims.Username == "" {
+		if claims == nil || claims.Role != auth.RoleAdmin || claims.AdminRole != model.AdminRoleBoss {
 			resp.Handle(c, errs.Forbidden("需要老板权限"))
 			c.Abort()
 			return
@@ -136,15 +136,21 @@ func RequireBoss() gin.HandlerFunc {
 	}
 }
 
-// CORS 小程序无跨域问题，此处为 admin-web 本地开发放行
-func CORS() gin.HandlerFunc {
+// CORS 白名单放行（L5：不再反射任意 Origin；不在名单内的一律不加跨域头）。
+// 小程序请求无跨域问题；admin-web 开发走 vite 代理也可不用 CORS。
+func CORS(allowed []string) gin.HandlerFunc {
+	allowSet := map[string]bool{}
+	for _, o := range allowed {
+		allowSet[o] = true
+	}
 	return func(c *gin.Context) {
 		origin := c.GetHeader("Origin")
-		if origin != "" {
+		if origin != "" && allowSet[origin] {
 			c.Header("Access-Control-Allow-Origin", origin)
 			c.Header("Access-Control-Allow-Credentials", "true")
 			c.Header("Access-Control-Allow-Headers", "Authorization, Content-Type")
 			c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+			c.Header("Vary", "Origin")
 		}
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)

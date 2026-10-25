@@ -1,5 +1,6 @@
 // Package auth JWT 签发与校验。角色：user（学员，含双角色教练）、admin。
 // 教练身份通过 coach.user_id 绑定关系即时判定，不进 token，避免解绑后旧 token 仍带权限。
+// admin 细分角色（boss/receptionist）随签发写入 claims（P0-1），改角色需重登生效。
 package auth
 
 import (
@@ -16,9 +17,10 @@ const (
 )
 
 type Claims struct {
-	UserID   int64  `json:"uid"`
-	Role     string `json:"role"`
-	Username string `json:"username,omitempty"` // admin 用
+	UserID    int64  `json:"uid"`
+	Role      string `json:"role"`
+	Username  string `json:"username,omitempty"` // admin 用
+	AdminRole string `json:"arole,omitempty"`    // admin 细分角色：boss / receptionist
 	jwt.RegisteredClaims
 }
 
@@ -32,10 +34,16 @@ func NewManager(secret string, expireHours int) *Manager {
 }
 
 func (m *Manager) Issue(userID int64, role, username string) (string, error) {
+	return m.IssueAdmin(userID, role, username, "")
+}
+
+// IssueAdmin 签发带细分角色的 token（后台登录用）
+func (m *Manager) IssueAdmin(userID int64, role, username, adminRole string) (string, error) {
 	claims := Claims{
-		UserID:   userID,
-		Role:     role,
-		Username: username,
+		UserID:    userID,
+		Role:      role,
+		Username:  username,
+		AdminRole: adminRole,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(m.expireHours) * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -50,7 +58,7 @@ func (m *Manager) Parse(tokenStr string) (*Claims, error) {
 			return nil, errs.Unauthorized("非法 token")
 		}
 		return m.secret, nil
-	})
+	}, jwt.WithValidMethods([]string{"HS256", "HS384", "HS512"}), jwt.WithExpirationRequired())
 	if err != nil || !token.Valid {
 		return nil, errs.Unauthorized("登录已失效，请重新登录")
 	}

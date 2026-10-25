@@ -2,6 +2,8 @@
 package router
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
@@ -18,7 +20,17 @@ func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.Mini
 		gin.SetMode(gin.ReleaseMode)
 	}
 	r := gin.New()
-	r.Use(gin.Logger(), gin.Recovery(), middleware.CORS())
+	// P0-5：不信任任何代理头（空配置时 ClientIP 取直连地址，防 XFF 伪造绕过限流）；
+	// nginx 反代部署时在 config.yaml server.trusted_proxies 里声明代理网段
+	if err := r.SetTrustedProxies(cfg.Server.TrustedProxies); err != nil {
+		gin.DefaultErrorWriter.Write([]byte("SetTrustedProxies: " + err.Error()))
+	}
+	// E1：请求体上限 2MB（无文件上传场景），防超大包拖垮服务
+	r.Use(func(c *gin.Context) {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 2<<20)
+		c.Next()
+	})
+	r.Use(gin.Logger(), gin.Recovery(), middleware.CORS(cfg.Server.CORSOrigins))
 
 	authSvc := service.NewAuthService(db, tokens, mp).
 		WithLockout(middleware.NewAdminLockout(5, 15)) // 连续失败5次锁15分钟
@@ -143,24 +155,24 @@ func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.Mini
 		a.POST("/banners", adminShopH.SaveBanner)
 		a.POST("/banners/:id", adminShopH.SaveBanner)
 		a.DELETE("/banners/:id", adminShopH.DeleteBanner)
-		// 订单与退款
+		// 订单与退款（审批=真实打款，仅老板）
 		a.GET("/orders", adminOrderH.ListOrders)
 		a.GET("/orders/:id", adminOrderH.GetOrder)
 		a.GET("/refunds", adminOrderH.ListRefunds)
-		a.POST("/refunds/:id/approve", adminOrderH.ApproveRefund)
-		a.POST("/refunds/:id/reject", adminOrderH.RejectRefund)
-		// 学员
+		a.POST("/refunds/:id/approve", middleware.RequireBoss(), adminOrderH.ApproveRefund)
+		a.POST("/refunds/:id/reject", middleware.RequireBoss(), adminOrderH.RejectRefund)
+		// 学员（手动调整课时=资金类操作，仅老板）
 		a.GET("/members", adminOrderH.ListMembers)
 		a.GET("/members/:id/packages", adminOrderH.MemberPackages)
-		a.POST("/members/:id/packages/:mpId/adjust", adminOrderH.AdjustSessions)
+		a.POST("/members/:id/packages/:mpId/adjust", middleware.RequireBoss(), adminOrderH.AdjustSessions)
 		// 预约课表与代客操作
 		a.GET("/schedule", adminBookingH.ScheduleView)
 		a.POST("/bookings", adminBookingH.CreateForUser)
 		a.POST("/bookings/:id/cancel", adminBookingH.Cancel)
 		a.POST("/verify", adminBookingH.Verify)
-		// 运营配置
+		// 运营配置（规则类，仅老板；查看全员）
 		a.GET("/configs", adminShopH.ListConfigs)
-		a.POST("/configs", adminShopH.SaveConfig)
+		a.POST("/configs", middleware.RequireBoss(), adminShopH.SaveConfig)
 		// 评价管理
 		a.GET("/reviews", reviewH.AdminList)
 		a.POST("/reviews/:id/audit", reviewH.AdminAudit)

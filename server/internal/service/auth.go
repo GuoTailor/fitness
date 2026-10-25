@@ -55,7 +55,10 @@ func (s *AuthService) UserLogin(ctx context.Context, code string) (*LoginResult,
 	if err == gorm.ErrRecordNotFound {
 		user = model.User{OpenID: session.OpenID, UnionID: session.UnionID, Nickname: "微信用户"}
 		if err := s.db.Create(&user).Error; err != nil {
-			return nil, errs.Server(err, "创建用户失败")
+			// L7：并发登录同一新 openid 撞唯一键 → 回查复用，不再 500
+			if err2 := s.db.Where("openid = ?", session.OpenID).First(&user).Error; err2 != nil {
+				return nil, errs.Server(err, "创建用户失败")
+			}
 		}
 	} else if err != nil {
 		return nil, errs.Server(err, "查询用户失败")
@@ -117,7 +120,8 @@ func (s *AuthService) AdminLogin(ctx context.Context, username, password, ip str
 	if s.lockout != nil {
 		s.lockout.OnSuccess(username, ip)
 	}
-	token, err := s.tokens.Issue(admin.ID, auth.RoleAdmin, admin.Username)
+	// 细分角色写进 claims（P0-1）：RequireBoss 据此放行，改角色需重登生效
+	token, err := s.tokens.IssueAdmin(admin.ID, auth.RoleAdmin, admin.Username, admin.Role)
 	if err != nil {
 		return "", nil, errs.Server(err, "签发登录凭证失败")
 	}
@@ -144,5 +148,6 @@ func (s *AuthService) BootstrapAdmin(defaultPassword string) {
 		log.Printf("[bootstrap] 创建默认管理员失败: %v", err)
 		return
 	}
-	log.Printf("[bootstrap] 已创建默认管理员 admin（密码: %s，请尽快修改）", defaultPassword)
+	// L3：不打印明文密码；开发默认密码仅提示修改，生产密码由 ADMIN_INIT_PASSWORD 提供
+	log.Printf("[bootstrap] 已创建默认管理员 admin（开发默认密码见 readme，生产请用 ADMIN_INIT_PASSWORD 并尽快修改）")
 }

@@ -25,14 +25,15 @@ func (s *VerifyService) Scan(ctx context.Context, code string, coachID int64, by
 	if err := s.db.WithContext(ctx).Where("code = ?", code).First(&v).Error; err != nil {
 		return nil, errs.NotFound("核销码不存在")
 	}
+	// M7：归属校验必须在幂等分支之前——否则任何教练扫别家「已核销」码也能拿到学员手机号
+	if coachID > 0 && !byAdmin && v.CoachID != coachID {
+		return nil, errs.Forbidden("只能核销自己课程的学员")
+	}
 	if v.Status == model.VerifyStatusVerified {
 		return s.scanResult(ctx, &v, true), nil // 重复扫码幂等成功
 	}
 	if v.Status != model.VerifyStatusPending {
 		return nil, errs.Biz("该核销码已失效")
-	}
-	if coachID > 0 && !byAdmin && v.CoachID != coachID {
-		return nil, errs.Forbidden("只能核销自己课程的学员")
 	}
 
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {		// 幂等闸门：pending → verified 只允许一个事务成功

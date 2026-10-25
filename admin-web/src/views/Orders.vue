@@ -102,7 +102,7 @@ const detail = ref(null)
 
 const statusText = (s) => ({ pending: '待支付', paid: '已支付', closed: '已关闭', refunding: '退款中', refunded: '已退款' }[s] || s)
 const statusType = (s) => ({ pending: 'warning', paid: 'success', closed: 'info', refunding: 'danger', refunded: 'info' }[s] || 'info')
-const refundStatusText = (s) => ({ pending: '待处理', approved: '已同意', rejected: '已拒绝', refunded: '已退款', failed: '失败' }[s] || s)
+const refundStatusText = (s) => ({ pending: '待处理', approved: '已同意·微信处理中', rejected: '已拒绝', refunded: '已退款', failed: '失败' }[s] || s)
 const fmtTime = (t) => (t ? String(t).replace('T', ' ').slice(0, 19) : '—')
 
 async function load() {

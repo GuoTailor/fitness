@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -26,6 +27,11 @@ func setupOrderDB(t *testing.T) *gorm.DB {
 		&model.Order{}, &model.Payment{}, &model.Refund{},
 		&model.MemberPackage{}, &model.PackageTransaction{}, &model.AppConfig{},
 	))
+	// Prepay 服务端取 openid（E2），测试需预置用户
+	for i := int64(1); i <= 5; i++ {
+		require.NoError(t, d.Create(&model.User{ID: i, OpenID: fmt.Sprintf("ou-%d", i)}).Error)
+	}
+	require.NoError(t, d.Create(&model.User{ID: 999, OpenID: "ou-999"}).Error)
 	return d
 }
 
@@ -60,7 +66,7 @@ func TestOrderMockPayFlow(t *testing.T) {
 	assert.Error(t, err)
 
 	// mock 支付：prepay 直接成功
-	res, err := svc.Prepay(ctx, order.ID, 1, "mock-openid")
+	res, err := svc.Prepay(ctx, order.ID, 1)
 	require.NoError(t, err)
 	assert.True(t, res.MockPaid)
 
@@ -84,8 +90,8 @@ func TestOrderMockPayFlow(t *testing.T) {
 	assert.Equal(t, model.TxnTypePurchase, txns[0].Type)
 
 	// 支付成功回调重放（直接调 HandlePaySuccess 两次）：状态不变、不重复入账
-	require.NoError(t, svc.HandlePaySuccess(ctx, order.OrderNo, "mocktxn-replay", "replay"))
-	require.NoError(t, svc.HandlePaySuccess(ctx, order.OrderNo, "mocktxn-replay2", "replay2"))
+	require.NoError(t, svc.HandlePaySuccess(ctx, order.OrderNo, "mocktxn-replay", "replay", order.Amount))
+	require.NoError(t, svc.HandlePaySuccess(ctx, order.OrderNo, "mocktxn-replay2", "replay2", order.Amount))
 	var cnt int64
 	d.Model(&model.MemberPackage{}).Where("order_id = ?", order.ID).Count(&cnt)
 	assert.Equal(t, int64(1), cnt, "重复回调不得重复建课时账户")
@@ -94,7 +100,7 @@ func TestOrderMockPayFlow(t *testing.T) {
 	assert.Equal(t, int64(1), txnCnt)
 
 	// 已支付订单不能再 prepay
-	_, err = svc.Prepay(ctx, order.ID, 1, "mock-openid")
+	_, err = svc.Prepay(ctx, order.ID, 1)
 	assert.Error(t, err)
 }
 
@@ -105,7 +111,7 @@ func TestRefundFullInactive(t *testing.T) {
 	sku := seedPkg(t, d, 10, 200000)
 
 	order, _ := svc.Create(ctx, 2, sku.ID, 0)
-	_, err := svc.Prepay(ctx, order.ID, 2, "openid")
+	_, err := svc.Prepay(ctx, order.ID, 2)
 	require.NoError(t, err)
 
 	refund, err := svc.ApplyRefund(ctx, order.ID, 2, "未开卡全额退")
@@ -139,7 +145,7 @@ func TestRefundPartialActivated(t *testing.T) {
 	sku := seedPkg(t, d, 10, 200000)
 
 	order, _ := svc.Create(ctx, 3, sku.ID, 0)
-	_, err := svc.Prepay(ctx, order.ID, 3, "openid")
+	_, err := svc.Prepay(ctx, order.ID, 3)
 	require.NoError(t, err)
 
 	// 模拟已开卡并消耗 4 课时
@@ -163,7 +169,7 @@ func TestRefundPartialActivated(t *testing.T) {
 
 	// 课时用完再申请退款 → 审批时拒绝
 	order2, _ := svc.Create(ctx, 3, sku.ID, 0)
-	_, _ = svc.Prepay(ctx, order2.ID, 3, "openid")
+	_, _ = svc.Prepay(ctx, order2.ID, 3)
 	var mp3 model.MemberPackage
 	d.Where("order_id = ?", order2.ID).First(&mp3)
 	d.Model(&mp3).Updates(map[string]interface{}{"status": model.MPStatusActive, "used_sessions": 10,
@@ -184,7 +190,7 @@ func TestRefundReject(t *testing.T) {
 	sku := seedPkg(t, d, 5, 100000)
 
 	order, _ := svc.Create(ctx, 4, sku.ID, 0)
-	_, _ = svc.Prepay(ctx, order.ID, 4, "openid")
+	_, _ = svc.Prepay(ctx, order.ID, 4)
 	refund, err := svc.ApplyRefund(ctx, order.ID, 4, "试试退款")
 	require.NoError(t, err)
 
@@ -208,7 +214,7 @@ func TestOrderIsolation(t *testing.T) {
 	sku := seedPkg(t, d, 10, 200000)
 
 	order, _ := svc.Create(ctx, 1, sku.ID, 0)
-	_, err := svc.Prepay(ctx, order.ID, 999, "openid") // 他人订单
+	_, err := svc.Prepay(ctx, order.ID, 999) // 他人订单
 	assert.Error(t, err)
 	var ae *errs.AppError
 	assert.ErrorAs(t, err, &ae)
@@ -227,7 +233,7 @@ func TestManualAdjust(t *testing.T) {
 
 	orderSvc := svc
 	order, _ := orderSvc.Create(ctx, 5, sku.ID, 0)
-	_, _ = orderSvc.Prepay(ctx, order.ID, 5, "openid")
+	_, _ = orderSvc.Prepay(ctx, order.ID, 5)
 
 	memberSvc := NewMemberService(d)
 	var mp model.MemberPackage

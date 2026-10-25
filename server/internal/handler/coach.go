@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"fitness/internal/errs"
 	"fitness/internal/middleware"
 	"fitness/internal/model"
 	"fitness/internal/resp"
@@ -160,6 +161,16 @@ func (h *CoachHandler) MyGroups(c *gin.Context) {
 func (h *CoachHandler) Enrollments(c *gin.Context) {
 	id, ok := idParam(c, "id")
 	if !ok {
+		return
+	}
+	// M8：水平越权防护——只能看自己团课的名单（含学员手机号）
+	var gc model.GroupClass
+	if err := h.db.WithContext(c.Request.Context()).First(&gc, id).Error; err != nil {
+		resp.Handle(c, errs.NotFound("团课不存在"))
+		return
+	}
+	if gc.CoachID != middleware.CoachID(c) {
+		resp.Handle(c, errs.Forbidden("只能查看自己的团课"))
 		return
 	}
 	list, err := h.group.EnrollmentsOf(c.Request.Context(), id)

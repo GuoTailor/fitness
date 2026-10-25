@@ -1,17 +1,19 @@
-# 健身课包售卖微信小程序
+# 健身课包售卖小程序 · H5 + 微信小程序
 
-自营健身工作室的「卖课包 + 约教练」小程序：课包商城 + 微信支付 → 预约教练/团课报名 → 线下扫码核销 → 课时跟踪 → 课后评价的完整闭环。
+自营健身工作室的「卖课包 + 约教练」用户端：课包商城 + 支付 → 预约教练/团课报名 → 线下扫码核销 → 课时跟踪 → 课后评价的完整闭环。用户端为 uni-app 双端工程（同一套代码构建 H5 网页版与微信小程序），界面按 Material Design 3 设计。
 
 - 产品规划：[docs/plans/健身课包售卖微信小程序 · 产品功能规划.md](docs/plans/健身课包售卖微信小程序%20·%20产品功能规划.md)
 - 实施进度：[docs/plans/进度记录.md](docs/plans/进度记录.md)
 - 成本估算：[docs/plans/基础设施成本估算（服务器域名认证等）.md](docs/plans/基础设施成本估算（服务器域名认证等）.md)
+- 本地启动：[docs/本地启动指南.md](docs/本地启动指南.md)
 
 ## 仓库结构
 
 | 目录 | 说明 | 技术栈 |
 |---|---|---|
-| `server/` | 后端 API（学员端 + 教练端 + 管理后台） | Go 1.21 · Gin · GORM · MySQL 5.7 |
-| `miniprogram/` | 微信小程序（学员 + 教练双角色） | 原生小程序 |
+| `server/` | 后端 API（学员端 + 教练端 + 管理后台） | Go 1.26 · Gin · GORM · MySQL 5.7 |
+| `client/` | **用户端双端工程（H5 + 微信小程序）**，MD3 设计系统 | uni-app · Vue3 · Vite · Pinia |
+| `miniprogram/` | 旧版原生小程序（已被 client/ 取代，保留对照，验收后可归档） | 原生小程序 |
 | `admin-web/` | Web 管理后台 | Vue3 · Vite · Element Plus |
 
 ## 快速开始
@@ -38,10 +40,18 @@ npm install
 npm run dev    # http://localhost:5173，已代理 /admin/api 到 :8080
 ```
 
-### 3. 小程序
+### 3. 用户端（H5 / 小程序）
 
-微信开发者工具导入 `miniprogram/` 目录（`project.config.json` 已就绪，AppID 可先用测试号）。
-`app.js` 里 `apiBase` 默认指向 `http://127.0.0.1:8080`；开发者工具需开启「不校验合法域名」。
+```bash
+cd client
+npm install
+npm run dev:h5            # H5 网页版 http://localhost:5174（已代理 /api 到 :8080）
+npm run dev:mp-weixin     # 小程序开发构建 → 微信开发者工具导入 client/dist/dev/mp-weixin
+```
+
+- H5 登录：手机号 + 短信验证码（`sms.mock=true` 时验证码弹窗回显）；小程序端 `wx.login` 静默登录
+- 支付：H5 走 Native 扫码（mock 模式直接支付成功）；小程序端 `uni.requestPayment`
+- 界面：Material Design 3 设计令牌与组件见 `client/DESIGN.md`；图标子集重生成 `node scripts/build_icon_font.mjs`
 
 ## 安全要求（贯穿各里程碑）
 

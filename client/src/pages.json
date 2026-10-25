@@ -1,0 +1,47 @@
+{
+  "easycom": {
+    "autoscan": true,
+    "custom": {
+      "^M3(.*)": "@/components/m3/M3$1.vue"
+    }
+  },
+  "pages": [
+    { "path": "pages/index/index", "style": { "navigationBarTitleText": "健身工作室" } },
+    { "path": "pages/course/list", "style": { "navigationBarTitleText": "课包商城" } },
+    { "path": "pages/course/detail", "style": { "navigationBarTitleText": "课包详情" } },
+    { "path": "pages/coach/list", "style": { "navigationBarTitleText": "教练团队" } },
+    { "path": "pages/coach/detail", "style": { "navigationBarTitleText": "教练主页" } },
+    { "path": "pages/coach/apply", "style": { "navigationBarTitleText": "教练入驻" } },
+    { "path": "pages/booking/private", "style": { "navigationBarTitleText": "预约私教" } },
+    { "path": "pages/booking/calendar", "style": { "navigationBarTitleText": "团课课表" } },
+    { "path": "pages/booking/list", "style": { "navigationBarTitleText": "我的预约" } },
+    { "path": "pages/booking/detail", "style": { "navigationBarTitleText": "预约详情" } },
+    { "path": "pages/review/create", "style": { "navigationBarTitleText": "评价课程" } },
+    { "path": "pages/review/list", "style": { "navigationBarTitleText": "我的评价" } },
+    { "path": "pages/review/public", "style": { "navigationBarTitleText": "学员评价" } },
+    { "path": "pages/coach-admin/index", "style": { "navigationBarTitleText": "教练工作台" } },
+    { "path": "pages/coach-admin/schedule", "style": { "navigationBarTitleText": "可约时段" } },
+    { "path": "pages/coach-admin/groups", "style": { "navigationBarTitleText": "团课管理" } },
+    { "path": "pages/coach-admin/verify", "style": { "navigationBarTitleText": "核销" } },
+    { "path": "pages/coach-admin/reviews", "style": { "navigationBarTitleText": "学员评价" } },
+    { "path": "pages/coach-admin/feedback", "style": { "navigationBarTitleText": "学员反馈" } },
+    { "path": "pages/coach-admin/qa", "style": { "navigationBarTitleText": "留言答疑" } },
+    { "path": "pages/qa/mine", "style": { "navigationBarTitleText": "我的提问" } },
+    { "path": "pages/order/list", "style": { "navigationBarTitleText": "我的订单" } },
+    { "path": "pages/coupon/center", "style": { "navigationBarTitleText": "领券中心" } },
+    { "path": "pages/coupon/mine", "style": { "navigationBarTitleText": "我的优惠券" } },
+    { "path": "pages/agreement/agreement", "style": { "navigationBarTitleText": "协议" } },
+    { "path": "pages/training/index", "style": { "navigationBarTitleText": "我的课包" } },
+    { "path": "pages/training/report", "style": { "navigationBarTitleText": "训练周报" } },
+    { "path": "pages/groupbuy/list", "style": { "navigationBarTitleText": "拼团" } },
+    { "path": "pages/groupbuy/detail", "style": { "navigationBarTitleText": "拼团详情" } },
+    { "path": "pages/login/login", "style": { "navigationBarTitleText": "登录" } },
+    { "path": "pages/mine/mine", "style": { "navigationBarTitleText": "我的" } }
+  ],
+  "globalStyle": {
+    "navigationStyle": "custom",
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "健身工作室",
+    "backgroundColor": "#F6FBF7"
+  }
+}

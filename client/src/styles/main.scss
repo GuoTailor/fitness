@@ -1,0 +1,76 @@
+// 全局样式：把 MD3 令牌落成 CSS 自定义属性 + 基础排版重置
+@import './icons.scss';
+
+:root,
+page {
+  --md-primary: #{$md-primary};
+  --md-on-primary: #{$md-on-primary};
+  --md-primary-container: #{$md-primary-container};
+  --md-on-primary-container: #{$md-on-primary-container};
+  --md-secondary: #{$md-secondary};
+  --md-on-secondary: #{$md-on-secondary};
+  --md-secondary-container: #{$md-secondary-container};
+  --md-on-secondary-container: #{$md-on-secondary-container};
+  --md-tertiary: #{$md-tertiary};
+  --md-on-tertiary: #{$md-on-tertiary};
+  --md-tertiary-container: #{$md-tertiary-container};
+  --md-on-tertiary-container: #{$md-on-tertiary-container};
+  --md-error: #{$md-error};
+  --md-on-error: #{$md-on-error};
+  --md-error-container: #{$md-error-container};
+  --md-on-error-container: #{$md-on-error-container};
+  --md-surface: #{$md-surface};
+  --md-on-surface: #{$md-on-surface};
+  --md-surface-variant: #{$md-surface-variant};
+  --md-on-surface-variant: #{$md-on-surface-variant};
+  --md-surface-container-lowest: #{$md-surface-container-lowest};
+  --md-surface-container-low: #{$md-surface-container-low};
+  --md-surface-container: #{$md-surface-container};
+  --md-surface-container-high: #{$md-surface-container-high};
+  --md-surface-container-highest: #{$md-surface-container-highest};
+  --md-outline: #{$md-outline};
+  --md-outline-variant: #{$md-outline-variant};
+  --md-inverse-surface: #{$md-inverse-surface};
+  --md-inverse-on-surface: #{$md-inverse-on-surface};
+  --md-inverse-primary: #{$md-inverse-primary};
+  --md-scrim: #{$md-scrim};
+}
+
+page {
+  background-color: var(--md-surface);
+  color: var(--md-on-surface);
+  font-family: #{$md-font-family};
+  font-size: 14px;
+  // 消除 H5 端 page 默认高度限制导致的滚动问题由页面自行处理
+}
+
+// 通用工具类
+.md-page {
+  min-height: 100vh;
+  background: var(--md-surface);
+}
+
+// 桌面端内容外壳：移动优先，宽屏居中限宽
+.md-shell {
+  max-width: #{$md-page-max-width};
+  margin: 0 auto;
+}
+
+// 单行/多行截断
+.md-ellipsis {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.md-ellipsis-2 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+// 价格强调
+.md-price {
+  color: var(--md-primary);
+  font-weight: 600;
+}

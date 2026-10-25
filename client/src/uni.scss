@@ -1,0 +1,90 @@
+// =====================================================================
+// uni.scss — Material Design 3 设计令牌（uni-app 构建时自动注入所有组件）
+// 种子色：品牌绿 #00B578（按 M3 调色规则生成的浅色方案）
+// 单位约定：全用 px（两端逻辑像素一致，H5 桌面端排版稳定）
+// =====================================================================
+
+// ---------- 颜色角色 ----------
+$md-primary: #006C4C;
+$md-on-primary: #FFFFFF;
+$md-primary-container: #89F8C7;
+$md-on-primary-container: #002115;
+$md-secondary: #4D6357;
+$md-on-secondary: #FFFFFF;
+$md-secondary-container: #CFE9D9;
+$md-on-secondary-container: #0A1F15;
+$md-tertiary: #3D6373;
+$md-on-tertiary: #FFFFFF;
+$md-tertiary-container: #C1E8FB;
+$md-on-tertiary-container: #001F2A;
+$md-error: #BA1A1A;
+$md-on-error: #FFFFFF;
+$md-error-container: #FFDAD6;
+$md-on-error-container: #410002;
+
+$md-surface: #F6FBF7;
+$md-on-surface: #171D19;
+$md-surface-variant: #DBE5DD;
+$md-on-surface-variant: #404943;
+$md-surface-container-lowest: #FFFFFF;
+$md-surface-container-low: #EFF5F0;
+$md-surface-container: #E9EFEB;
+$md-surface-container-high: #E3EAE5;
+$md-surface-container-highest: #DEE4DF;
+$md-outline: #707973;
+$md-outline-variant: #BFC9C1;
+$md-inverse-surface: #2C322D;
+$md-inverse-on-surface: #EDF2EC;
+$md-inverse-primary: #6CDBA8;
+$md-scrim: rgba(0, 0, 0, 0.4);
+
+// ---------- 字型标尺（size/line-height/weight/letter-spacing）----------
+$md-font-family: Roboto, -apple-system, 'PingFang SC', 'HarmonyOS Sans SC', 'Microsoft YaHei', sans-serif;
+
+@mixin md-type($size, $line, $weight: 400, $ls: 0) {
+  font-size: $size + px;
+  line-height: $line + px;
+  font-weight: $weight;
+  letter-spacing: $ls + px;
+}
+@mixin md-display-large  { @include md-type(57, 64); }
+@mixin md-display-medium { @include md-type(45, 52); }
+@mixin md-display-small  { @include md-type(36, 44); }
+@mixin md-headline-large { @include md-type(32, 40); }
+@mixin md-headline-medium{ @include md-type(28, 36); }
+@mixin md-headline-small { @include md-type(24, 32); }
+@mixin md-title-large    { @include md-type(22, 28); }
+@mixin md-title-medium   { @include md-type(16, 24, 500, 0.15); }
+@mixin md-title-small    { @include md-type(14, 20, 500, 0.1); }
+@mixin md-body-large     { @include md-type(16, 24, 400, 0.5); }
+@mixin md-body-medium    { @include md-type(14, 20, 400, 0.25); }
+@mixin md-body-small     { @include md-type(12, 16, 400, 0.4); }
+@mixin md-label-large    { @include md-type(14, 20, 500, 0.1); }
+@mixin md-label-medium   { @include md-type(12, 16, 500, 0.5); }
+@mixin md-label-small    { @include md-type(11, 16, 500, 0.5); }
+
+// ---------- 形状 ----------
+$md-shape-xs: 4px;
+$md-shape-sm: 8px;
+$md-shape-md: 12px;
+$md-shape-lg: 16px;
+$md-shape-xl: 28px;
+$md-shape-full: 999px;
+
+// ---------- 高度（elevation）----------
+@mixin md-elevation-1 { box-shadow: 0 1px 2px rgba(0,0,0,0.30), 0 1px 3px 1px rgba(0,0,0,0.15); }
+@mixin md-elevation-2 { box-shadow: 0 1px 2px rgba(0,0,0,0.30), 0 2px 6px 2px rgba(0,0,0,0.15); }
+@mixin md-elevation-3 { box-shadow: 0 4px 8px 3px rgba(0,0,0,0.15), 0 1px 3px rgba(0,0,0,0.30); }
+
+// ---------- 状态层 / 动效 ----------
+$md-state-hover-opacity: 0.08;
+$md-state-focus-opacity: 0.12;
+$md-state-pressed-opacity: 0.12;
+$md-motion-standard: cubic-bezier(0.2, 0, 0, 1);
+$md-motion-emphasized: cubic-bezier(0.05, 0.7, 0.1, 1);
+$md-motion-short: 150ms;
+$md-motion-medium: 250ms;
+
+// ---------- 布局 ----------
+$md-page-max-width: 640px;
+$md-bottom-nav-height: 64px;

@@ -19,6 +19,7 @@ type Config struct {
 	WeChat   WeChatConfig   `yaml:"wechat"`
 	Pay      PayConfig      `yaml:"pay"`
 	Notify   NotifyConfig   `yaml:"notify"`
+	Sms      SmsConfig      `yaml:"sms"`
 	Video    VideoConfig    `yaml:"video"`
 	Upload   UploadConfig   `yaml:"upload"`
 	OwnerID  int64          `yaml:"owner_id"` // 平台化预留：单店自营阶段固定 1
@@ -84,6 +85,11 @@ type NotifyConfig struct {
 	Templates map[string]string  `yaml:"templates"` // scene -> 模板 ID
 }
 
+type SmsConfig struct {
+	// Mock 为 true 时不真正发送短信，验证码仅记日志并由登录响应回显（联调用）
+	Mock bool `yaml:"mock"`
+}
+
 type VideoConfig struct {
 	// 课程介绍视频的静态播放地址前缀（nginx 静态目录）
 	BaseURL string `yaml:"base_url"`
@@ -101,14 +107,19 @@ func Load(path string) (*Config, error) {
 	cfg := &Config{
 		Server: ServerConfig{
 			Port: 8080, Mode: "debug", BaseURL: "http://localhost:8080",
-			// 开发默认放行 vite dev server；release 部署在 nginx 后同源，无需跨域
-			CORSOrigins: []string{"http://localhost:5173", "http://127.0.0.1:5173"},
+			// 开发默认放行 vite dev server（admin-web:5173 / client H5:5174）；
+			// release 部署在 nginx 后同源，无需跨域
+			CORSOrigins: []string{
+				"http://localhost:5173", "http://127.0.0.1:5173",
+				"http://localhost:5174", "http://127.0.0.1:5174",
+			},
 		},
 		DB:     DBConfig{Host: "10.96.158.189", Port: 3306, Username: "fitness", Database: "fitness"},
 		JWT:    JWTConfig{Secret: "dev-insecure-secret", ExpireHours: 24 * 30},
 		WeChat: WeChatConfig{Mock: true},
 		Pay:    PayConfig{Mock: true},
 		Notify: NotifyConfig{Mock: true},
+		Sms:    SmsConfig{Mock: true},
 		Video:  VideoConfig{BaseURL: "http://localhost:8080/videos"},
 		Upload: UploadConfig{Dir: "data/uploads", BaseURL: "http://localhost:8080/uploads", MaxMB: 2},
 		OwnerID: 1,
@@ -168,6 +179,9 @@ func (c *Config) ValidateForRelease() error {
 	}
 	if c.Pay.Mock {
 		problems = append(problems, "pay.mock 必须关闭（mock 支付=免费入账）")
+	}
+	if c.Sms.Mock {
+		problems = append(problems, "sms.mock 必须关闭（mock 短信可在任意手机号登录）")
 	}
 	if os.Getenv("ADMIN_INIT_PASSWORD") == "" {
 		problems = append(problems, "必须通过环境变量 ADMIN_INIT_PASSWORD 提供管理员初始密码")

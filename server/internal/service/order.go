@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -267,8 +268,9 @@ func newcomerEligible(ctx context.Context, db *gorm.DB, userID int64) bool {
 }
 
 // Prepay 发起支付。openid 一律取登录用户的服务端记录（E2：不信任客户端传入）。
+// channel：jsapi（默认，小程序拉起支付）/ native（网页端扫码，返回 code_url）。
 // mock 模式：直接把该单置为已支付（走 HandlePaySuccess 幂等链路）。
-func (s *OrderService) Prepay(ctx context.Context, orderID, userID int64) (*wechat.PrepayResult, error) {
+func (s *OrderService) Prepay(ctx context.Context, orderID, userID int64, channel string) (*wechat.PrepayResult, error) {
 	order, err := s.getOwnedOrder(ctx, orderID, userID)
 	if err != nil {
 		return nil, err
@@ -276,11 +278,21 @@ func (s *OrderService) Prepay(ctx context.Context, orderID, userID int64) (*wech
 	if order.Status != model.OrderStatusPending {
 		return nil, errs.Biz("订单当前状态不可支付")
 	}
-	var user model.User
-	if err := s.db.WithContext(ctx).Select("id", "openid").First(&user, userID).Error; err != nil {
-		return nil, errs.NotFound("用户不存在")
+	switch channel {
+	case "", "jsapi", "native":
+	default:
+		return nil, errs.BadParam("不支持的支付通道")
 	}
-	res, err := s.pay.Prepay(ctx, order.OrderNo, user.OpenID, order.Amount, order.Title)
+	var res *wechat.PrepayResult
+	if channel == "native" {
+		res, err = s.pay.PrepayNative(ctx, order.OrderNo, order.Amount, order.Title)
+	} else {
+		var user model.User
+		if err := s.db.WithContext(ctx).Select("id", "openid").First(&user, userID).Error; err != nil {
+			return nil, errs.NotFound("用户不存在")
+		}
+		res, err = s.pay.Prepay(ctx, order.OrderNo, user.OpenID, order.Amount, order.Title)
+	}
 	if err != nil {
 		return nil, errs.Wrap(errs.CodeBiz, "发起支付失败", err)
 	}
@@ -293,8 +305,18 @@ func (s *OrderService) Prepay(ctx context.Context, orderID, userID int64) (*wech
 	return res, nil
 }
 
-// MyOrders 我的订单（倒序分页）
-func (s *OrderService) MyOrders(ctx context.Context, userID int64, page, pageSize int) ([]model.Order, int64, error) {
+// MyOrder 订单详情（本人校验，他人 404）——网页端扫码支付轮询用
+func (s *OrderService) MyOrder(ctx context.Context, orderID, userID int64) (*model.Order, error) {
+	return s.getOwnedOrder(ctx, orderID, userID)
+}
+
+// MyOrders 我的订单（倒序分页；statuses 非空时按状态过滤，逗号分隔白名单校验）
+var orderStatusWhitelist = map[string]bool{
+	model.OrderStatusPending: true, model.OrderStatusPaid: true, model.OrderStatusClosed: true,
+	model.OrderStatusRefund: true, model.OrderStatusRefunded: true,
+}
+
+func (s *OrderService) MyOrders(ctx context.Context, userID int64, page, pageSize int, statuses string) ([]model.Order, int64, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -302,6 +324,22 @@ func (s *OrderService) MyOrders(ctx context.Context, userID int64, page, pageSiz
 		pageSize = 10
 	}
 	q := s.db.WithContext(ctx).Model(&model.Order{}).Where("user_id = ?", userID)
+	if statuses != "" {
+		var allowed []string
+		for _, st := range strings.Split(statuses, ",") {
+			st = strings.TrimSpace(st)
+			if st == "" {
+				continue
+			}
+			if !orderStatusWhitelist[st] {
+				return nil, 0, errs.BadParam("不支持的订单状态: " + st)
+			}
+			allowed = append(allowed, st)
+		}
+		if len(allowed) > 0 {
+			q = q.Where("status IN ?", allowed)
+		}
+	}
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
 		return nil, 0, err

@@ -37,12 +37,18 @@ func (h *OrderHandler) Create(c *gin.Context) {
 
 // Prepay POST /api/v1/orders/:id/prepay —— mock 通道直接支付成功并入账。
 // openid 一律取登录用户的服务端记录（E2），不再接受客户端传入。
+// body 可选 {channel:"native"}：网页端扫码支付（返回 codeUrl 渲染二维码）；
+// 缺省 jsapi：小程序端拉起支付。
 func (h *OrderHandler) Prepay(c *gin.Context) {
 	id, ok := idParam(c, "id")
 	if !ok {
 		return
 	}
-	res, err := h.orders.Prepay(c.Request.Context(), id, middleware.UserID(c))
+	var req struct {
+		Channel string `json:"channel"`
+	}
+	_ = c.ShouldBindJSON(&req)
+	res, err := h.orders.Prepay(c.Request.Context(), id, middleware.UserID(c), req.Channel)
 	if err != nil {
 		resp.Handle(c, err)
 		return
@@ -50,10 +56,24 @@ func (h *OrderHandler) Prepay(c *gin.Context) {
 	resp.OK(c, res)
 }
 
-// My GET /api/v1/orders?page=
+// Get GET /api/v1/orders/:id —— 订单详情（本人校验），网页端扫码支付轮询用
+func (h *OrderHandler) Get(c *gin.Context) {
+	id, ok := idParam(c, "id")
+	if !ok {
+		return
+	}
+	order, err := h.orders.MyOrder(c.Request.Context(), id, middleware.UserID(c))
+	if err != nil {
+		resp.Handle(c, err)
+		return
+	}
+	resp.OK(c, order)
+}
+
+// My GET /api/v1/orders?page=&status=
 func (h *OrderHandler) My(c *gin.Context) {
 	page, size := pageOf(c)
-	list, total, err := h.orders.MyOrders(c.Request.Context(), middleware.UserID(c), page, size)
+	list, total, err := h.orders.MyOrders(c.Request.Context(), middleware.UserID(c), page, size, c.Query("status"))
 	if err != nil {
 		resp.Handle(c, err)
 		return

@@ -114,7 +114,7 @@ func TestGiftCoupon(t *testing.T) {
 	assert.EqualValues(t, 2, order.GiftSessions)
 
 	// mock 支付 → 入账：总课时 = 10 + 2 赠课，独立赠课流水
-	_, err = svc.Prepay(ctx, order.ID, 2)
+	_, err = svc.Prepay(ctx, order.ID, 2, "jsapi")
 	require.NoError(t, err)
 	var mp model.MemberPackage
 	require.NoError(t, d.Where("order_id = ?", order.ID).First(&mp).Error)

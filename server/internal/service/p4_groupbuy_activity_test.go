@@ -165,7 +165,7 @@ func TestGroupBuyActivityQuotaWithRefund(t *testing.T) {
 
 	o1, err := e.gb.Open(ctx, 1, e.sku.ID)
 	require.NoError(t, err)
-	_, err = e.orders.Prepay(ctx, o1.ID, 1)
+	_, err = e.orders.Prepay(ctx, o1.ID, 1, "jsapi")
 	require.NoError(t, err)
 	// 到期未成团 → 自动退款，名额不返还
 	require.NoError(t, e.db.Model(&model.GroupBuy{}).Where("id = ?", o1.GroupBuyID).

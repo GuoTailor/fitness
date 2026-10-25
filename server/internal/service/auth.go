@@ -3,11 +3,16 @@ package service
 
 import (
 	"context"
+	crand "crypto/rand"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"log"
+	"math/big"
+	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -16,15 +21,29 @@ import (
 	"fitness/internal/errs"
 	"fitness/internal/middleware"
 	"fitness/internal/model"
+	"fitness/internal/sms"
 	"fitness/internal/wechat"
 )
 
+// 短信验证码策略：5 分钟有效、60s 重发间隔、单手机单日 5 条、错 5 次作废。
+// IP 层限流由路由中间件 LoginRateLimit 承担。
+const (
+	smsCodeTTL        = 5 * time.Minute
+	smsResendInterval = 60 * time.Second
+	smsDailyLimit     = 5
+	smsMaxAttempts    = 5
+)
+
+var phoneRe = regexp.MustCompile(`^1\d{10}$`)
+
 type AuthService struct {
-	db      *gorm.DB
-	tokens  *auth.Manager
-	mp      wechat.MiniProgram
-	lockout *middleware.AdminLockout // 可为 nil（单测不启用）
-	coupons *CouponService           // 可为 nil（未接新人礼包）
+	db          *gorm.DB
+	tokens      *auth.Manager
+	mp          wechat.MiniProgram
+	lockout     *middleware.AdminLockout // 可为 nil（单测不启用）
+	coupons     *CouponService           // 可为 nil（未接新人礼包）
+	smsProvider sms.Provider             // 可为 nil（未接网页端短信登录）
+	smsMock     bool
 }
 
 func NewAuthService(db *gorm.DB, tokens *auth.Manager, mp wechat.MiniProgram) *AuthService {
@@ -40,6 +59,13 @@ func (s *AuthService) WithLockout(l *middleware.AdminLockout) *AuthService {
 // WithCouponGifts 接入优惠券服务（新用户自动发新人礼包）
 func (s *AuthService) WithCouponGifts(c *CouponService) *AuthService {
 	s.coupons = c
+	return s
+}
+
+// WithSms 接入短信通道（网页端手机号登录）；mock=true 时验证码由登录响应回显
+func (s *AuthService) WithSms(p sms.Provider, mock bool) *AuthService {
+	s.smsProvider = p
+	s.smsMock = mock
 	return s
 }
 
@@ -76,6 +102,11 @@ func (s *AuthService) UserLogin(ctx context.Context, code string) (*LoginResult,
 	} else if err != nil {
 		return nil, errs.Server(err, "查询用户失败")
 	}
+	return s.issueForUser(ctx, &user, created)
+}
+
+// issueForUser 登录收尾共用逻辑：状态校验、新人礼包、签发 token、附带教练身份
+func (s *AuthService) issueForUser(ctx context.Context, user *model.User, created bool) (*LoginResult, error) {
 	if user.Status != 1 {
 		return nil, errs.Forbidden("账号已被禁用")
 	}
@@ -88,11 +119,124 @@ func (s *AuthService) UserLogin(ctx context.Context, code string) (*LoginResult,
 	}
 	var coach model.Coach
 	isCoach := s.db.Where("user_id = ? AND status = 1", user.ID).First(&coach).Error == nil
-	res := &LoginResult{Token: token, User: &user, IsCoach: isCoach}
+	res := &LoginResult{Token: token, User: user, IsCoach: isCoach}
 	if isCoach {
 		res.CoachID = coach.ID
 	}
 	return res, nil
+}
+
+// SendLoginSms 下发网页端登录验证码。dev 返回 true 表示 mock 通道（验证码可回显给前端联调）。
+func (s *AuthService) SendLoginSms(ctx context.Context, phone string) (code string, dev bool, err error) {
+	if !phoneRe.MatchString(phone) {
+		return "", false, errs.BadParam("手机号格式不正确")
+	}
+	if s.smsProvider == nil {
+		return "", false, errs.Server(nil, "短信通道未启用")
+	}
+	// 频控 1：60s 内已发过 → 拒绝（取最新一条含已用记录判断）
+	var recent model.SmsVerification
+	err = s.db.WithContext(ctx).
+		Where("phone = ? AND purpose = ?", phone, model.SmsPurposeLogin).
+		Order("id DESC").First(&recent).Error
+	if err == nil && time.Since(recent.CreatedAt) < smsResendInterval {
+		return "", false, errs.Biz("发送太频繁，请稍后再试")
+	} else if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", false, errs.Server(err, "查询发送记录失败")
+	}
+	// 频控 2：单手机自然日上限
+	now := time.Now()
+	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	var today int64
+	if err := s.db.WithContext(ctx).Model(&model.SmsVerification{}).
+		Where("phone = ? AND purpose = ? AND created_at >= ?", phone, model.SmsPurposeLogin, dayStart).
+		Count(&today).Error; err != nil {
+		return "", false, errs.Server(err, "统计发送次数失败")
+	}
+	if today >= smsDailyLimit {
+		return "", false, errs.Biz("今日验证码发送次数已达上限")
+	}
+	n, err := crand.Int(crand.Reader, big.NewInt(1000000))
+	if err != nil {
+		return "", false, errs.Server(err, "生成验证码失败")
+	}
+	code = fmt.Sprintf("%06d", n.Int64())
+	v := model.SmsVerification{
+		Phone: phone, Code: code, Purpose: model.SmsPurposeLogin,
+		ExpiresAt: now.Add(smsCodeTTL),
+	}
+	if err := s.db.WithContext(ctx).Create(&v).Error; err != nil {
+		return "", false, errs.Server(err, "保存验证码失败")
+	}
+	if err := s.smsProvider.Send(ctx, phone, code); err != nil {
+		return "", false, errs.Wrap(errs.CodeBiz, "短信发送失败", err)
+	}
+	return code, s.smsMock, nil
+}
+
+// LoginByPhone 网页端手机号+验证码登录：验证通过后按手机号 upsert 用户（已绑定该
+// 手机的微信用户登录即同一账号；全新手机号建 web 用户，openid 占位 web-{phone}）。
+func (s *AuthService) LoginByPhone(ctx context.Context, phone, smsCode string) (*LoginResult, error) {
+	if !phoneRe.MatchString(phone) {
+		return nil, errs.BadParam("手机号格式不正确")
+	}
+	if strings.TrimSpace(smsCode) == "" {
+		return nil, errs.BadParam("验证码不能为空")
+	}
+	var v model.SmsVerification
+	err := s.db.WithContext(ctx).
+		Where("phone = ? AND purpose = ? AND used_at IS NULL", phone, model.SmsPurposeLogin).
+		Order("id DESC").First(&v).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, errs.Biz("验证码无效，请重新获取")
+	}
+	if err != nil {
+		return nil, errs.Server(err, "查询验证码失败")
+	}
+	if time.Now().After(v.ExpiresAt) {
+		return nil, errs.Biz("验证码已过期，请重新获取")
+	}
+	if v.Attempts >= smsMaxAttempts {
+		return nil, errs.Biz("尝试次数过多，请重新获取验证码")
+	}
+	// 常量时间比较防时序侧信道；失配计一次尝试（防暴力猜码）
+	if subtle.ConstantTimeCompare([]byte(smsCode), []byte(v.Code)) != 1 {
+		if err := s.db.WithContext(ctx).Model(&model.SmsVerification{}).
+			Where("id = ?", v.ID).
+			UpdateColumn("attempts", gorm.Expr("attempts + 1")).Error; err != nil {
+			log.Printf("[sms] 记录验证码尝试次数失败: %v", err)
+		}
+		return nil, errs.Biz("验证码错误")
+	}
+	// 用后作废：条件更新防并发重放同一验证码
+	res := s.db.WithContext(ctx).Model(&model.SmsVerification{}).
+		Where("id = ? AND used_at IS NULL", v.ID).Update("used_at", time.Now())
+	if res.Error != nil {
+		return nil, errs.Server(res.Error, "核销验证码失败")
+	}
+	if res.RowsAffected == 0 {
+		return nil, errs.Biz("验证码已被使用")
+	}
+
+	var user model.User
+	created := false
+	err = s.db.Where("phone = ?", phone).First(&user).Error
+	if err == gorm.ErrRecordNotFound {
+		openid := "web-" + phone // 占位 openid：与微信 openid 空间隔离，保证唯一索引可用
+		nick := "用户" + phone[len(phone)-4:]
+		user = model.User{OpenID: openid, Phone: &phone, Nickname: nick}
+		if err := s.db.Create(&user).Error; err != nil {
+			// 并发登录同一新手机号撞唯一键 → 回查复用
+			if err2 := s.db.Where("phone = ?", phone).First(&user).Error; err2 != nil {
+				return nil, errs.Server(err, "创建用户失败")
+			}
+		} else {
+			created = true
+		}
+	} else if err != nil {
+		return nil, errs.Server(err, "查询用户失败")
+	}
+	return s.issueForUser(ctx, &user, created)
 }
 
 // newcomerGifts 新用户自动发放新人礼包（marketing.newcomer_gift_templates，

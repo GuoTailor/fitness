@@ -12,6 +12,7 @@ import (
 	"github.com/wechatpay-apiv3/wechatpay-go/core/notify"
 	"github.com/wechatpay-apiv3/wechatpay-go/core/option"
 	"github.com/wechatpay-apiv3/wechatpay-go/services/payments/jsapi"
+	"github.com/wechatpay-apiv3/wechatpay-go/services/payments/native"
 	"github.com/wechatpay-apiv3/wechatpay-go/services/refunddomestic"
 	"github.com/wechatpay-apiv3/wechatpay-go/utils"
 
@@ -67,6 +68,24 @@ func (p *RealPay) Prepay(ctx context.Context, outTradeNo, openid string, amount 
 			"paySign":   deref(resp.PaySign),
 		},
 	}, nil
+}
+
+// PrepayNative Native 扫码统一下单（网页端）：返回 weixin:// 二维码内容，
+// 用户扫码支付后走与 JSAPI 相同的回调入账链路（/api/v1/pay/notify）。
+func (p *RealPay) PrepayNative(ctx context.Context, outTradeNo string, amount int64, description string) (*PrepayResult, error) {
+	svc := native.NativeApiService{Client: p.client}
+	resp, _, err := svc.Prepay(ctx, native.PrepayRequest{
+		Appid:       core.String(p.appid),
+		Mchid:       core.String(p.mchID),
+		Description: core.String(description),
+		OutTradeNo:  core.String(outTradeNo),
+		NotifyUrl:   core.String(p.cfg.NotifyURL),
+		Amount:      &native.Amount{Total: core.Int64(amount), Currency: core.String("CNY")},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &PrepayResult{CodeURL: deref(resp.CodeUrl)}, nil
 }
 
 // Refund 发起退款（out_refund_no 幂等：同号重复请求微信侧只退一笔）

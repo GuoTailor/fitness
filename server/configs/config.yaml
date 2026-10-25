@@ -42,6 +42,11 @@ notify:
     sessions_warning: ""
     expire_warning: ""
 
+# 网页端（H5）短信验证码登录。mock=true 不真实发送，验证码记日志并由响应回显联调；
+# 服务商就绪后改 false 需先在 internal/sms 接入真实 Provider。
+sms:
+  mock: true
+
 # 课程介绍视频静态地址前缀（nginx 静态目录）
 video:
   base_url: "http://localhost:8080/videos"

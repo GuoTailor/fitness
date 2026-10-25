@@ -67,9 +67,9 @@ func TestGroupBuyOpenJoinSucceed(t *testing.T) {
 	_, err = e.gb.Join(ctx, 2, o1.GroupBuyID)
 	assert.Contains(t, err.Error(), "已参与该团")
 	// 支付 2 单
-	_, err = e.orders.Prepay(ctx, o1.ID, 1)
+	_, err = e.orders.Prepay(ctx, o1.ID, 1, "jsapi")
 	require.NoError(t, err)
-	_, err = e.orders.Prepay(ctx, o2.ID, 2)
+	_, err = e.orders.Prepay(ctx, o2.ID, 2, "jsapi")
 	require.NoError(t, err)
 	// 2/3 未达 capacity：仍报名中
 	var gb model.GroupBuy
@@ -79,7 +79,7 @@ func TestGroupBuyOpenJoinSucceed(t *testing.T) {
 	// 第 3 人支付 → 自动成团
 	o3, err := e.gb.Join(ctx, 3, o1.GroupBuyID)
 	require.NoError(t, err)
-	_, err = e.orders.Prepay(ctx, o3.ID, 3)
+	_, err = e.orders.Prepay(ctx, o3.ID, 3, "jsapi")
 	require.NoError(t, err)
 	require.NoError(t, e.db.First(&gb, o1.GroupBuyID).Error)
 	assert.EqualValues(t, model.GroupBuySuccess, gb.Status)
@@ -104,7 +104,7 @@ func TestGroupBuyExpiryAutoRefund(t *testing.T) {
 	ctx := context.Background()
 	o1, err := e.gb.Open(ctx, 1, e.sku.ID)
 	require.NoError(t, err)
-	_, err = e.orders.Prepay(ctx, o1.ID, 1)
+	_, err = e.orders.Prepay(ctx, o1.ID, 1, "jsapi")
 	require.NoError(t, err)
 
 	// 回填过期时间 → 到期置 failed 并自动退款（直接调任务函数，等价 Runner.CloseGroupBuys 内部逻辑）

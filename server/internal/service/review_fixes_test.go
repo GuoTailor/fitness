@@ -22,7 +22,7 @@ func TestRefundGateOrderAndSnapshot(t *testing.T) {
 	sku := seedPkg(t, d, 10, 200000)
 
 	order, _ := svc.Create(ctx, 2, sku.ID, 0)
-	_, err := svc.Prepay(ctx, order.ID, 2)
+	_, err := svc.Prepay(ctx, order.ID, 2, "jsapi")
 	require.NoError(t, err)
 	// 消耗 4 课时 → 剩 6 × 200
 	var mp model.MemberPackage

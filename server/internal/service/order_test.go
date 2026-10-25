@@ -68,7 +68,7 @@ func TestOrderMockPayFlow(t *testing.T) {
 	assert.Error(t, err)
 
 	// mock 支付：prepay 直接成功
-	res, err := svc.Prepay(ctx, order.ID, 1)
+	res, err := svc.Prepay(ctx, order.ID, 1, "jsapi")
 	require.NoError(t, err)
 	assert.True(t, res.MockPaid)
 
@@ -102,7 +102,7 @@ func TestOrderMockPayFlow(t *testing.T) {
 	assert.Equal(t, int64(1), txnCnt)
 
 	// 已支付订单不能再 prepay
-	_, err = svc.Prepay(ctx, order.ID, 1)
+	_, err = svc.Prepay(ctx, order.ID, 1, "jsapi")
 	assert.Error(t, err)
 }
 
@@ -113,7 +113,7 @@ func TestRefundFullInactive(t *testing.T) {
 	sku := seedPkg(t, d, 10, 200000)
 
 	order, _ := svc.Create(ctx, 2, sku.ID, 0)
-	_, err := svc.Prepay(ctx, order.ID, 2)
+	_, err := svc.Prepay(ctx, order.ID, 2, "jsapi")
 	require.NoError(t, err)
 
 	refund, err := svc.ApplyRefund(ctx, order.ID, 2, "未开卡全额退")
@@ -147,7 +147,7 @@ func TestRefundPartialActivated(t *testing.T) {
 	sku := seedPkg(t, d, 10, 200000)
 
 	order, _ := svc.Create(ctx, 3, sku.ID, 0)
-	_, err := svc.Prepay(ctx, order.ID, 3)
+	_, err := svc.Prepay(ctx, order.ID, 3, "jsapi")
 	require.NoError(t, err)
 
 	// 模拟已开卡并消耗 4 课时
@@ -171,7 +171,7 @@ func TestRefundPartialActivated(t *testing.T) {
 
 	// 课时用完再申请退款 → 审批时拒绝
 	order2, _ := svc.Create(ctx, 3, sku.ID, 0)
-	_, _ = svc.Prepay(ctx, order2.ID, 3)
+	_, _ = svc.Prepay(ctx, order2.ID, 3, "jsapi")
 	var mp3 model.MemberPackage
 	d.Where("order_id = ?", order2.ID).First(&mp3)
 	d.Model(&mp3).Updates(map[string]interface{}{"status": model.MPStatusActive, "used_sessions": 10,
@@ -192,7 +192,7 @@ func TestRefundReject(t *testing.T) {
 	sku := seedPkg(t, d, 5, 100000)
 
 	order, _ := svc.Create(ctx, 4, sku.ID, 0)
-	_, _ = svc.Prepay(ctx, order.ID, 4)
+	_, _ = svc.Prepay(ctx, order.ID, 4, "jsapi")
 	refund, err := svc.ApplyRefund(ctx, order.ID, 4, "试试退款")
 	require.NoError(t, err)
 
@@ -216,7 +216,7 @@ func TestOrderIsolation(t *testing.T) {
 	sku := seedPkg(t, d, 10, 200000)
 
 	order, _ := svc.Create(ctx, 1, sku.ID, 0)
-	_, err := svc.Prepay(ctx, order.ID, 999) // 他人订单
+	_, err := svc.Prepay(ctx, order.ID, 999, "jsapi") // 他人订单
 	assert.Error(t, err)
 	var ae *errs.AppError
 	assert.ErrorAs(t, err, &ae)
@@ -235,7 +235,7 @@ func TestManualAdjust(t *testing.T) {
 
 	orderSvc := svc
 	order, _ := orderSvc.Create(ctx, 5, sku.ID, 0)
-	_, _ = orderSvc.Prepay(ctx, order.ID, 5)
+	_, _ = orderSvc.Prepay(ctx, order.ID, 5, "jsapi")
 
 	memberSvc := NewMemberService(d)
 	var mp model.MemberPackage

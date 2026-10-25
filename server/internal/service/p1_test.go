@@ -130,7 +130,7 @@ func TestOrderWithCouponAndRefundReturn(t *testing.T) {
 	assert.Error(t, err)
 
 	// mock 支付 → 申请退款 → 审批通过 → 券返还 usable、退款额=券后实付
-	_, err = svc.Prepay(ctx, order.ID, 2)
+	_, err = svc.Prepay(ctx, order.ID, 2, "jsapi")
 	require.NoError(t, err)
 	refund, err := svc.ApplyRefund(ctx, order.ID, 2, "不想要了")
 	require.NoError(t, err)
@@ -165,7 +165,7 @@ func TestCouponExpiredNoReturn(t *testing.T) {
 	past := time.Now().Add(-time.Hour)
 	require.NoError(t, d.Model(&model.UserCoupon{}).Where("id = ?", uc.ID).Update("expire_at", past).Error)
 
-	_, _ = svc.Prepay(ctx, order.ID, 3)
+	_, _ = svc.Prepay(ctx, order.ID, 3, "jsapi")
 	refund, err := svc.ApplyRefund(ctx, order.ID, 3, "x")
 	require.NoError(t, err)
 	_, err = svc.ApproveRefund(ctx, refund.ID, 1)

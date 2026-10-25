@@ -34,6 +34,47 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	resp.OK(c, res)
 }
 
+// SendSms POST /api/v1/auth/sms/send {phone} —— 网页端登录验证码。
+// mock 通道响应回显 devCode，便于无短信资质时联调；频控：IP 限流 + 单手机 60s/日 5 条。
+func (h *AuthHandler) SendSms(c *gin.Context) {
+	var req struct {
+		Phone string `json:"phone" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.Handle(c, service.BadParamJSON())
+		return
+	}
+	code, dev, err := h.auth.SendLoginSms(c.Request.Context(), req.Phone)
+	if err != nil {
+		resp.Handle(c, err)
+		return
+	}
+	data := gin.H{"sent": true}
+	if dev {
+		data["devCode"] = code
+	}
+	resp.OK(c, data)
+}
+
+// LoginByPhone POST /api/v1/auth/login/phone {phone,smsCode} —— 网页端手机号登录，
+// 返回与小程序登录一致的 {token,user,isCoach,coachId}
+func (h *AuthHandler) LoginByPhone(c *gin.Context) {
+	var req struct {
+		Phone   string `json:"phone" binding:"required"`
+		SmsCode string `json:"smsCode" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.Handle(c, service.BadParamJSON())
+		return
+	}
+	res, err := h.auth.LoginByPhone(c.Request.Context(), req.Phone, req.SmsCode)
+	if err != nil {
+		resp.Handle(c, err)
+		return
+	}
+	resp.OK(c, res)
+}
+
 // BindPhone POST /api/v1/auth/phone {code}（手机号快速验证组件 phone code）
 func (h *AuthHandler) BindPhone(c *gin.Context) {
 	var req struct {

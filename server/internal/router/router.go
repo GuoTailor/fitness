@@ -14,6 +14,7 @@ import (
 	"fitness/internal/middleware"
 	"fitness/internal/resp"
 	"fitness/internal/service"
+	"fitness/internal/sms"
 	"fitness/internal/task"
 	"fitness/internal/wechat"
 )
@@ -51,6 +52,12 @@ func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.Mini
 	authSvc := service.NewAuthService(db, tokens, mp).
 		WithLockout(middleware.NewAdminLockout(5, 15)). // 连续失败5次锁15分钟
 		WithCouponGifts(couponSvc)                      // 新用户自动发新人礼包
+	// 网页端短信登录通道（mock 记日志回显验证码；真实服务商接入前 release 门禁拦截）
+	smsProvider, err := sms.New(cfg.Sms.Mock)
+	if err != nil {
+		return nil, err
+	}
+	authSvc = authSvc.WithSms(smsProvider, cfg.Sms.Mock)
 	shopSvc := service.NewShopService(db, cfg.OwnerID)
 	orderSvc := service.NewOrderService(db, cfgSvc, pay).WithReferralReward(referralSvc).WithGroupBuy(gbSvc)
 	memberSvc := service.NewMemberService(db)
@@ -103,6 +110,9 @@ func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.Mini
 	api.Use(middleware.JWT(tokens), middleware.StatusGate(db))
 	{
 		api.POST("/auth/login", middleware.LoginRateLimit(10), authH.Login)
+		// 网页端（H5）：短信验证码登录（IP 限流同小程序登录）
+		api.POST("/auth/sms/send", middleware.LoginRateLimit(10), authH.SendSms)
+		api.POST("/auth/login/phone", middleware.LoginRateLimit(10), authH.LoginByPhone)
 		api.POST("/auth/logout", middleware.RequireUser(), authH.Logout)
 		api.POST("/auth/phone", middleware.RequireUser(), authH.BindPhone)
 		api.GET("/me", middleware.RequireUser(), meH.Me)
@@ -116,6 +126,7 @@ func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.Mini
 
 		api.POST("/orders", middleware.RequireUser(), orderH.Create)
 		api.GET("/orders", middleware.RequireUser(), orderH.My)
+		api.GET("/orders/:id", middleware.RequireUser(), orderH.Get)
 		api.POST("/orders/:id/prepay", middleware.RequireUser(), orderH.Prepay)
 		api.POST("/orders/:id/refund", middleware.RequireUser(), orderH.ApplyRefund)
 		api.GET("/member/packages", middleware.RequireUser(), orderH.MyPackages)

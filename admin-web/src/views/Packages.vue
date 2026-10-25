@@ -71,6 +71,7 @@
           <el-input-number v-model="s.validDays" :min="1" placeholder="有效天数" style="width: 120px" />
           <el-input-number v-model="s.price" :min="0" :step="100" placeholder="售价(分)" style="width: 140px" />
           <el-input-number v-model="s.originalPrice" :min="0" :step="100" placeholder="原价(分)" style="width: 140px" />
+          <el-input-number v-model="s.newcomerPrice" :min="0" :step="100" placeholder="新人价(分,0关)" style="width: 160px" />
           <el-button link type="danger" @click="form.skus.splice(i, 1)">删除</el-button>
         </div>
         <el-button size="small" style="margin-top: 8px" @click="addSku">+ 添加规格</el-button>
@@ -118,12 +119,12 @@ async function loadCoaches() {
 }
 
 function addSku() {
-  form.skus.push({ id: 0, name: '', sessions: 10, validDays: 365, price: 0, originalPrice: 0, status: 1, sort: form.skus.length + 1 })
+  form.skus.push({ id: 0, name: '', sessions: 10, validDays: 365, price: 0, originalPrice: 0, newcomerPrice: 0, status: 1, sort: form.skus.length + 1 })
 }
 
 function openForm(row) {
   Object.assign(form, row
-    ? { ...row, skus: row.skus.map((s) => ({ ...s })), coachIds: [...(row.coachIds || [])] }
+    ? { ...row, skus: row.skus.map((s) => ({ newcomerPrice: 0, ...s })), coachIds: [...(row.coachIds || [])] }
     : { id: 0, title: '', category: 'private', tags: '', difficulty: 3, coverUrl: '', introVideoUrl: '',
         outline: '', suitable: '', status: 1, sort: 0, skus: [], coachIds: [] })
   if (!form.skus.length) addSku()

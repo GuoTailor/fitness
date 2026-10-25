@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -16,12 +17,23 @@ import (
 // uk_review(verification_id, target_type) 防重复提交。
 // 默认待审核，后台通过后对外可见；教练维度通过/隐藏时刷新 coach 评分聚合。
 type ReviewService struct {
-	db  *gorm.DB
-	cfg *ConfigService
+	db            *gorm.DB
+	cfg           *ConfigService
+	uploadPrefixes []string // 图片链接合法前缀（本站上传），默认 /uploads/
 }
 
 func NewReviewService(db *gorm.DB, cfg *ConfigService) *ReviewService {
-	return &ReviewService{db: db, cfg: cfg}
+	return &ReviewService{db: db, cfg: cfg, uploadPrefixes: []string{"/uploads/"}}
+}
+
+// WithUploadPrefixes 设置图片合法前缀（路由装配时传入 upload.base_url）
+func (s *ReviewService) WithUploadPrefixes(ps ...string) *ReviewService {
+	for _, p := range ps {
+		if p != "" {
+			s.uploadPrefixes = append(s.uploadPrefixes, p)
+		}
+	}
+	return s
 }
 
 // Reviewable 待评价列表：已核销且未评价（近 50 条），带课程名/教练名。
@@ -104,7 +116,8 @@ func (s *ReviewService) projectNameOf(ctx context.Context, v *model.Verification
 }
 
 // Submit 提交评价：双维度一次落库（同事务），重复提交返回业务错误。
-func (s *ReviewService) Submit(ctx context.Context, userID, verificationID int64, packageRating, coachRating int, content string) error {
+// images 为本站上传返回的图片 URL（≤4 张，前缀校验防外链注入）。
+func (s *ReviewService) Submit(ctx context.Context, userID, verificationID int64, packageRating, coachRating int, content string, images []string) error {
 	if packageRating < 1 || packageRating > 5 || coachRating < 1 || coachRating > 5 {
 		return errs.BadParam("评分需在 1-5 星之间")
 	}
@@ -113,6 +126,10 @@ func (s *ReviewService) Submit(ctx context.Context, userID, verificationID int64
 		runes = runes[:500]
 	}
 	content = string(runes)
+	imagesJSON, err := sanitizeReviewImages(images, s.uploadPrefixes)
+	if err != nil {
+		return err
+	}
 
 	var v model.Verification
 	if err := s.db.WithContext(ctx).First(&v, verificationID).Error; err != nil {
@@ -133,15 +150,15 @@ func (s *ReviewService) Submit(ctx context.Context, userID, verificationID int64
 	if s.cfg != nil && s.cfg.GetInt(ctx, model.CfgReviewAutoApprove, 0) == 1 {
 		status = model.ReviewStatusApproved
 	}
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		rows := []model.Review{
 			{
 				UserID: userID, TargetType: model.ReviewTargetPackage, PackageID: packageID, CoachID: v.CoachID,
-				VerificationID: verificationID, Rating: int8(packageRating), Content: content, Status: status,
+				VerificationID: verificationID, Rating: int8(packageRating), Content: content, Images: imagesJSON, Status: status,
 			},
 			{
 				UserID: userID, TargetType: model.ReviewTargetCoach, PackageID: packageID, CoachID: v.CoachID,
-				VerificationID: verificationID, Rating: int8(coachRating), Content: content, Status: status,
+				VerificationID: verificationID, Rating: int8(coachRating), Content: content, Images: imagesJSON, Status: status,
 			},
 		}
 		for i := range rows {
@@ -317,6 +334,47 @@ func (s *ReviewService) RefreshCoachRating(ctx context.Context, coachID int64) {
 		Updates(map[string]interface{}{"rating_avg": avg, "rating_count": cnt})
 }
 
+// sanitizeReviewImages 评价图片校验：≤4 张、长度受限、必须以本站上传前缀开头
+func sanitizeReviewImages(images []string, prefixes []string) (string, error) {
+	if len(images) > 4 {
+		return "", errs.BadParam("评价图片最多 4 张")
+	}
+	out := make([]string, 0, len(images))
+	for _, u := range images {
+		if len(u) > 512 {
+			return "", errs.BadParam("图片链接异常")
+		}
+		ok := false
+		for _, p := range prefixes {
+			if p != "" && strings.HasPrefix(u, p) {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			return "", errs.BadParam("图片必须来自站内上传")
+		}
+		out = append(out, u)
+	}
+	b, err := json.Marshal(out)
+	if err != nil {
+		return "", errs.Server(err, "图片数据异常")
+	}
+	return string(b), nil
+}
+
+// ParseReviewImages review.Images（JSON 数组字符串）→ 前端可用的数组
+func ParseReviewImages(s string) []string {
+	var out []string
+	if s != "" {
+		_ = json.Unmarshal([]byte(s), &out)
+	}
+	if out == nil {
+		out = []string{}
+	}
+	return out
+}
+
 // enrichUsers 评价列表补充昵称/头像
 func (s *ReviewService) enrichUsers(ctx context.Context, reviews []model.Review) []map[string]interface{} {
 	uids := map[int64]bool{}
@@ -342,6 +400,7 @@ func (s *ReviewService) enrichUsers(ctx context.Context, reviews []model.Review)
 			"nickname":   users[r.UserID].Nickname,
 			"avatarUrl":  users[r.UserID].AvatarURL,
 			"targetType": r.TargetType,
+			"images":     ParseReviewImages(r.Images),
 		}
 		out = append(out, item)
 	}

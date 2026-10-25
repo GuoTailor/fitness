@@ -364,7 +364,7 @@ func (s *GroupService) EnrollmentsOf(ctx context.Context, classID int64) ([]map[
 	for _, ge := range ges {
 		u := users[ge.UserID]
 		out = append(out, map[string]interface{}{
-			"enrollment": ge, "userName": u.Nickname, "userPhone": u.Phone,
+			"enrollment": ge, "userName": u.Nickname, "userPhone": u.PlainPhone(),
 		})
 	}
 	return out, nil

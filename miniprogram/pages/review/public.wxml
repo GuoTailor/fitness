@@ -9,6 +9,10 @@
     </view>
     <view class="featured" wx:if="{{item.featured}}">精选</view>
     <view class="content" wx:if="{{item.content}}">{{item.content}}</view>
+    <view class="imgs" wx:if="{{item.images.length}}">
+      <image wx:for="{{item.images}}" wx:for-item="img" wx:key="*this" class="r-img"
+             src="{{img}}" mode="aspectFill" bindtap="onPreview" data-url="{{img}}" />
+    </view>
     <view class="reply" wx:if="{{item.coachReply}}">教练回复：{{item.coachReply}}</view>
     <view class="time">{{item.timeText}}</view>
   </view>

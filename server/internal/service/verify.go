@@ -125,7 +125,7 @@ func (s *VerifyService) scanResult(ctx context.Context, v *model.Verification, a
 		"alreadyVerified": already,
 		"bizType":         v.BizType,
 		"userName":        name,
-		"userPhone":       user.Phone,
+		"userPhone":       user.PlainPhone(),
 		"code":            v.Code,
 		"verifiedAt":      v.VerifiedAt,
 	}

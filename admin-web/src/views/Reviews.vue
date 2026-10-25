@@ -34,6 +34,11 @@
           <template #default="{ row }">
             <div>{{ row.review.content || '（未填写）' }}</div>
             <div class="reply" v-if="row.review.coachReply">教练回复：{{ row.review.coachReply }}</div>
+            <div class="imgs" v-if="row.images && row.images.length">
+              <el-image v-for="(img, i) in row.images" :key="i" :src="img"
+                        :preview-src-list="row.images" fit="cover"
+                        style="width: 56px; height: 56px; border-radius: 4px; margin: 4px 4px 0 0" />
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="对象" width="140">
@@ -123,6 +128,7 @@ onMounted(load)
   flex-wrap: wrap;
 }
 
+.imgs { display: flex; flex-wrap: wrap; }
 .reply {
   color: #888;
   font-size: 12px;

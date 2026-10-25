@@ -57,7 +57,7 @@ func (h *AdminOrderHandler) ListOrders(c *gin.Context) {
 	list := make([]row, 0, len(orders))
 	for _, o := range orders {
 		u := users[o.UserID]
-		list = append(list, row{Order: o, UserNickname: u.Nickname, UserPhone: u.Phone})
+		list = append(list, row{Order: o, UserNickname: u.Nickname, UserPhone: u.PlainPhone()})
 	}
 	resp.OK(c, gin.H{"list": list, "total": total})
 }

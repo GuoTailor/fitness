@@ -18,6 +18,10 @@ Page({
     await this.loadMore()
   },
 
+  onPreview(e) {
+    wx.previewImage({ current: e.currentTarget.dataset.url, urls: this.data.curImages || [e.currentTarget.dataset.url] })
+  },
+
   onReachBottom() { this.loadMore() },
 
   async loadMore() {
@@ -30,6 +34,7 @@ Page({
         ...x.review,
         nickname: (x.nickname || '学员').slice(0, 12),
         starsArr: [1, 2, 3, 4, 5].map((i) => i <= x.review.rating),
+        images: x.images || [],
         timeText: String(x.review.createdAt).slice(0, 10),
       }))
       this.setData({

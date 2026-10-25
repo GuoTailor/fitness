@@ -20,6 +20,7 @@ type Config struct {
 	Pay      PayConfig      `yaml:"pay"`
 	Notify   NotifyConfig   `yaml:"notify"`
 	Video    VideoConfig    `yaml:"video"`
+	Upload   UploadConfig   `yaml:"upload"`
 	OwnerID  int64          `yaml:"owner_id"` // 平台化预留：单店自营阶段固定 1
 	Version  string         `yaml:"-"`
 	LoadedAt time.Time      `yaml:"-"`
@@ -88,6 +89,13 @@ type VideoConfig struct {
 	BaseURL string `yaml:"base_url"`
 }
 
+// UploadConfig 图片上传（评价图片等）。文件落本地磁盘，nginx /uploads/ 静态直出。
+type UploadConfig struct {
+	Dir     string `yaml:"dir"`      // 存储目录，默认 data/uploads
+	BaseURL string `yaml:"base_url"` // 对外访问前缀，默认 http://localhost:8080/uploads
+	MaxMB   int    `yaml:"max_mb"`   // 单图上限 MB，默认 2
+}
+
 // Load 按顺序合并：config.yaml -> config.local.yaml -> 环境变量（DB_PASSWORD / JWT_SECRET）
 func Load(path string) (*Config, error) {
 	cfg := &Config{
@@ -102,6 +110,7 @@ func Load(path string) (*Config, error) {
 		Pay:    PayConfig{Mock: true},
 		Notify: NotifyConfig{Mock: true},
 		Video:  VideoConfig{BaseURL: "http://localhost:8080/videos"},
+		Upload: UploadConfig{Dir: "data/uploads", BaseURL: "http://localhost:8080/uploads", MaxMB: 2},
 		OwnerID: 1,
 	}
 	if err := loadYAML(path, cfg); err != nil {

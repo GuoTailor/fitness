@@ -1,0 +1,23 @@
+.page { padding: 24rpx; }
+
+.coupon { display: flex; background: #fff; border-radius: 16rpx; margin-bottom: 20rpx; overflow: hidden; }
+
+.c-left { width: 220rpx; background: linear-gradient(135deg, #00b578, #009a66); color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 28rpx 12rpx; }
+
+.c-label { font-size: 34rpx; font-weight: 700; }
+
+.c-scope { font-size: 20rpx; opacity: 0.9; margin-top: 8rpx; }
+
+.c-right { flex: 1; padding: 20rpx 24rpx; display: flex; flex-direction: column; justify-content: center; }
+
+.c-name { font-size: 28rpx; font-weight: 500; }
+
+.c-valid { font-size: 22rpx; color: #999; margin: 10rpx 0 14rpx; }
+
+.c-btn { background: #00b578; color: #fff; border-radius: 30rpx; font-size: 24rpx; width: 160rpx; }
+
+.c-btn-off { background: #d9d9d9; color: #fff; }
+
+.empty { color: #999; font-size: 26rpx; text-align: center; padding: 120rpx 0; }
+
+.loading { color: #999; font-size: 24rpx; text-align: center; padding: 40rpx 0; }

@@ -31,6 +31,8 @@ type Order struct {
 	SkuSessions   int       `gorm:"default:0" json:"skuSessions"`
 	SkuValidDays  int       `gorm:"default:0" json:"skuValidDays"`
 	SkuUnitPrice  int64     `gorm:"default:0" json:"skuUnitPrice"`
+	// 本单使用了新人价（每人限购一次，按手机号判重；与优惠券不叠加取低价）
+	NewcomerUsed  int8      `gorm:"default:0" json:"newcomerUsed"`
 	Remark        string    `gorm:"size:255" json:"remark"`
 	CreatedAt     time.Time `json:"createdAt"`
 	UpdatedAt     time.Time `json:"updatedAt"`

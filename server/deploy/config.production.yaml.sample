@@ -42,4 +42,10 @@ notify:
 video:
   base_url: https://your-domain.com/videos
 
+# 图片上传（评价图等）：文件落服务器本地磁盘，nginx /uploads/ alias 同一目录
+upload:
+  dir: /var/www/fitness/uploads
+  base_url: https://your-domain.com/uploads
+  max_mb: 2
+
 owner_id: 1

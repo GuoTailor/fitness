@@ -9,7 +9,11 @@
       <view class="time">{{item.timeText}}</view>
     </view>
     <view class="order-foot">
-      <text class="amount">¥{{item.amountYuan}}</text>
+      <view class="amount-wrap">
+        <text class="amount">¥{{item.amountYuan}}</text>
+        <text class="coupon-cut" wx:if="{{item.couponAmount > 0}}">已优惠¥{{item.couponCutYuan}}</text>
+        <text class="newcomer-cut" wx:if="{{item.newcomerUsed}}">新人价</text>
+      </view>
       <view class="actions">
         <button wx:if="{{item.status === 'pending'}}" class="act act-primary" size="mini" bindtap="onPay" data-id="{{item.id}}">去支付</button>
         <button wx:if="{{item.status === 'paid'}}" class="act" size="mini" bindtap="onRefund" data-id="{{item.id}}">申请退款</button>

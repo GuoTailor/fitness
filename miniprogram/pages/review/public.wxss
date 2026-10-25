@@ -21,3 +21,6 @@
 .empty { text-align: center; color: #999; font-size: 26rpx; padding: 120rpx 0; }
 
 .loading { text-align: center; color: #bbb; font-size: 24rpx; padding: 24rpx 0 60rpx; }
+
+.imgs { display: flex; flex-wrap: wrap; gap: 12rpx; margin-top: 12rpx; }
+.r-img { width: 160rpx; height: 160rpx; border-radius: 10rpx; background: #f0f0f0; }

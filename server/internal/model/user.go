@@ -9,13 +9,23 @@ type User struct {
 	UnionID   string    `gorm:"column:unionid;size:64" json:"-"`
 	Nickname  string    `gorm:"size:64" json:"nickname"`
 	AvatarURL string    `gorm:"size:512" json:"avatarUrl"`
-	Phone     string    `gorm:"size:20;index" json:"phone"`
+	// 唯一索引（00006）：一人一号，新人价限购按手机号判重依赖此约束。
+	// 语义：NULL=未绑定（MySQL 唯一索引允许多 NULL；'' 会撞键，禁止落库）
+	Phone     *string   `gorm:"size:20;uniqueIndex" json:"phone"`
 	Status    int8      `gorm:"default:1" json:"status"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 func (User) TableName() string { return "user" }
+
+// PlainPhone 手机号字符串（未绑定为空串），列表展示用
+func (u User) PlainPhone() string {
+	if u.Phone == nil {
+		return ""
+	}
+	return *u.Phone
+}
 
 // Coach 教练（coach.user_id 绑定登录账号实现小程序双角色）
 type Coach struct {

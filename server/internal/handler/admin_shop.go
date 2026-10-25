@@ -33,6 +33,7 @@ type skuPayload struct {
 	ValidDays     int    `json:"validDays"`
 	Price         int64  `json:"price"`
 	OriginalPrice int64  `json:"originalPrice"`
+	NewcomerPrice int64  `json:"newcomerPrice"` // 新人价（分），0=不启用
 	Status        int8   `json:"status"`
 	Sort          int    `json:"sort"`
 }
@@ -118,9 +119,14 @@ func (h *AdminShopHandler) SavePackage(c *gin.Context) {
 		return
 	}
 	// M6：价格/课时/有效期零与负数直接拒绝（0 元课包=免费送课入口，负价污染退款折算）
+	// 新人价：启用时必须小于售价且 ≥1 分（每人限购一次，按手机号判重）
 	for _, s := range req.Skus {
 		if s.Price <= 0 || s.Sessions <= 0 || s.ValidDays <= 0 {
 			resp.Handle(c, errs.BadParam("规格的价格、课时数、有效期必须大于 0"))
+			return
+		}
+		if s.NewcomerPrice != 0 && (s.NewcomerPrice < 1 || s.NewcomerPrice >= s.Price) {
+			resp.Handle(c, errs.BadParam("新人价需大于 0 且小于售价"))
 			return
 		}
 	}
@@ -156,6 +162,10 @@ func (h *AdminShopHandler) SavePackage(c *gin.Context) {
 			sku := model.PackageSKU{
 				PackageID: pkg.ID, Name: s.Name, Sessions: s.Sessions, ValidDays: s.ValidDays,
 				Price: s.Price, OriginalPrice: s.OriginalPrice, Status: s.Status, Sort: s.Sort,
+			}
+			if s.NewcomerPrice > 0 {
+				np := s.NewcomerPrice
+				sku.NewcomerPrice = &np
 			}
 			if s.ID > 0 {
 				sku.ID = s.ID
@@ -350,6 +360,8 @@ func (h *AdminShopHandler) SaveConfig(c *gin.Context) {
 		model.CfgBookingCancelPenaltyHours: true, model.CfgGroupQuitDeadlineHours: true,
 		model.CfgRefundFullDays: true, model.CfgMemberWarnSessions: true,
 		model.CfgMemberWarnExpireDays: true, model.CfgReviewInviteAfterDays: true,
+		model.CfgReviewAutoApprove: true, model.CfgNewcomerGiftTemplates: true,
+		model.CfgPrivacyContent: true, model.CfgAgreementContent: true,
 	}
 	if !known[req.Key] {
 		resp.Handle(c, errs.BadParam("不支持的配置项: "+req.Key))

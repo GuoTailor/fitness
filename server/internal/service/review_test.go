@@ -33,7 +33,7 @@ func TestReviewFlow(t *testing.T) {
 	require.NoError(t, err)
 	v2, err := f.booking.GenCode(ctx, b2.ID, f.userID)
 	require.NoError(t, err)
-	assert.Error(t, review.Submit(ctx, f.userID, v2.ID, 5, 5, "未核销"))
+	assert.Error(t, review.Submit(ctx, f.userID, v2.ID, 5, 5, "未核销", nil))
 
 	// 待评价列表：仅已核销未评价的 1 条
 	pending, err := review.Reviewable(ctx, f.userID)
@@ -43,7 +43,7 @@ func TestReviewFlow(t *testing.T) {
 	assert.Equal(t, "测试私教", pending[0]["projectName"])
 
 	// 提交：一次落双维度两条
-	require.NoError(t, review.Submit(ctx, f.userID, v.ID, 4, 5, "练得很扎实"))
+	require.NoError(t, review.Submit(ctx, f.userID, v.ID, 4, 5, "练得很扎实", nil))
 	var cnt int64
 	f.db.Model(&model.Review{}).Count(&cnt)
 	assert.EqualValues(t, 2, cnt)
@@ -51,16 +51,16 @@ func TestReviewFlow(t *testing.T) {
 	// 待评价清空；重复提交被 uk_review 拦截
 	pending, _ = review.Reviewable(ctx, f.userID)
 	assert.Len(t, pending, 0)
-	assert.Error(t, review.Submit(ctx, f.userID, v.ID, 4, 5, "再评一次"))
+	assert.Error(t, review.Submit(ctx, f.userID, v.ID, 4, 5, "再评一次", nil))
 
 	// 数据隔离：他人核销记录 → 404 语义
 	other := model.User{OpenID: "review-other"}
 	require.NoError(t, f.db.Create(&other).Error)
-	assert.Error(t, review.Submit(ctx, other.ID, v.ID, 5, 5, "冒用"))
+	assert.Error(t, review.Submit(ctx, other.ID, v.ID, 5, 5, "冒用", nil))
 
 	// 非法评分
-	assert.Error(t, review.Submit(ctx, f.userID, v.ID, 0, 5, "x"))
-	assert.Error(t, review.Submit(ctx, f.userID, v.ID, 5, 6, "x"))
+	assert.Error(t, review.Submit(ctx, f.userID, v.ID, 0, 5, "x", nil))
+	assert.Error(t, review.Submit(ctx, f.userID, v.ID, 5, 6, "x", nil))
 
 	// 审核前不可见
 	items, total, err := review.ListApproved(ctx, model.ReviewTargetCoach, f.coachID, 1, 10)
@@ -131,7 +131,7 @@ func TestReviewAutoApprove(t *testing.T) {
 	_, err = f.verify.Scan(ctx, v.Code, f.coachID, false)
 	require.NoError(t, err)
 
-	require.NoError(t, review.Submit(ctx, f.userID, v.ID, 5, 5, "免审直出"))
+	require.NoError(t, review.Submit(ctx, f.userID, v.ID, 5, 5, "免审直出", nil))
 	_, total, err := review.ListApproved(ctx, model.ReviewTargetCoach, f.coachID, 1, 10)
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, total, "auto_approve=1 提交即通过")

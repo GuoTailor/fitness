@@ -66,8 +66,33 @@
 
 .footer-bar-space { height: 140rpx; }
 
-.footer-bar { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; padding: 16rpx 24rpx calc(16rpx + env(safe-area-inset-bottom)); box-shadow: 0 -4rpx 16rpx rgba(0,0,0,0.04); }
+.footer-bar { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; padding: 16rpx 24rpx calc(16rpx + env(safe-area-inset-bottom)); box-shadow: 0 -4rpx 16rpx rgba(0,0,0,0.04); display: flex; align-items: center; gap: 20rpx; }
 
-.buy-btn { background: linear-gradient(135deg, #00b578, #009a66); color: #fff; border-radius: 44rpx; font-size: 30rpx; }
+.pay-amount { flex: 1; display: flex; align-items: baseline; gap: 8rpx; }
+
+.pa-label { font-size: 22rpx; color: #999; }
+
+.pa-num { font-size: 40rpx; font-weight: 700; color: #e64340; }
+
+.buy-btn { background: linear-gradient(135deg, #00b578, #009a66); color: #fff; border-radius: 44rpx; font-size: 30rpx; flex: 1; }
 
 .buy-btn.disabled { background: #c4c9cd; }
+
+/* 新人价与优惠券 */
+.np { color: #e64340; font-weight: 700; margin-right: 8rpx; }
+
+.strike { color: #bbb; text-decoration: line-through; font-size: 24rpx; }
+
+.np-tag { font-size: 20rpx; color: #fff; background: linear-gradient(135deg, #ff7a45, #e64340); border-radius: 6rpx; padding: 2rpx 10rpx; margin-left: 8rpx; }
+
+.coupon-bar { display: flex; align-items: center; margin-top: 24rpx; padding: 20rpx 0 4rpx; border-top: 1rpx solid #f5f5f5; }
+
+.c-label { font-size: 26rpx; color: #666; width: 120rpx; }
+
+.c-value { flex: 1; font-size: 24rpx; color: #e64340; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.c-go { font-size: 22rpx; color: #4a90ff; margin-right: 16rpx; }
+
+.c-arrow { color: #ccc; }
+
+.np-tip { margin-top: 16rpx; font-size: 22rpx; color: #ff7a45; background: #fff5f0; border-radius: 8rpx; padding: 12rpx 16rpx; }

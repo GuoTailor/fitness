@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"fitness/internal/middleware"
 	"fitness/internal/resp"
 	"fitness/internal/service"
 )
@@ -52,13 +53,13 @@ func (h *ShopHandler) ListPackages(c *gin.Context) {
 	resp.OK(c, gin.H{"list": items, "total": total, "page": page, "pageSize": size})
 }
 
-// PackageDetail GET /api/v1/packages/:id
+// PackageDetail GET /api/v1/packages/:id（登录用户附带新人价资格）
 func (h *ShopHandler) PackageDetail(c *gin.Context) {
 	id, ok := idParam(c, "id")
 	if !ok {
 		return
 	}
-	data, err := h.shop.PackageDetail(c.Request.Context(), id)
+	data, err := h.shop.PackageDetail(c.Request.Context(), id, middleware.UserID(c))
 	if err != nil {
 		resp.Handle(c, err)
 		return

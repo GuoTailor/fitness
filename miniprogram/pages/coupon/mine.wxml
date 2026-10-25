@@ -1,0 +1,21 @@
+<view class="page">
+  <view class="tabs">
+    <view class="tab {{tab === 'usable' ? 'on' : ''}}" bindtap="onTab" data-tab="usable">可使用</view>
+    <view class="tab {{tab === 'used' ? 'on' : ''}}" bindtap="onTab" data-tab="used">已使用</view>
+    <view class="tab {{tab === 'expired' ? 'on' : ''}}" bindtap="onTab" data-tab="expired">已过期</view>
+    <view class="go-center" bindtap="onGoCenter">领券中心 ›</view>
+  </view>
+
+  <view class="coupon {{item.status !== 'usable' ? 'coupon-off' : ''}}" wx:for="{{items}}" wx:key="couponId">
+    <view class="c-left">
+      <view class="c-label">{{item.label || '优惠券'}}</view>
+    </view>
+    <view class="c-right">
+      <view class="c-name">{{item.name}}</view>
+      <view class="c-sub">{{item.expireText || statusText}}</view>
+      <view class="c-status s-{{item.status}}">{{item.statusText}}</view>
+    </view>
+  </view>
+  <view class="empty" wx:if="{{!loading && !items.length}}">这里还没有券，去领券中心逛逛吧</view>
+  <view class="loading" wx:if="{{loading}}">加载中…</view>
+</view>

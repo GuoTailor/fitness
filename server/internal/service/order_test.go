@@ -26,6 +26,7 @@ func setupOrderDB(t *testing.T) *gorm.DB {
 		&model.User{}, &model.CoursePackage{}, &model.PackageSKU{}, &model.CoachPackage{},
 		&model.Order{}, &model.Payment{}, &model.Refund{},
 		&model.MemberPackage{}, &model.PackageTransaction{}, &model.AppConfig{},
+		&model.CouponTemplate{}, &model.UserCoupon{},
 	))
 	// Prepay 服务端取 openid（E2），测试需预置用户
 	for i := int64(1); i <= 5; i++ {

@@ -22,6 +22,7 @@ Page({
       list.forEach((o) => {
         o.statusText = STATUS_TEXT[o.status] || o.status
         o.amountYuan = (o.amount / 100).toFixed(2)
+        o.couponCutYuan = o.couponAmount > 0 ? (o.couponAmount / 100).toFixed(2) : 0
         o.timeText = String(o.createdAt).replace('T', ' ').slice(0, 16)
       })
       this.setData({ list, page: this.data.page + 1, finished: list.length >= data.total })

@@ -7,6 +7,7 @@
         <el-menu-item index="/packages">课包管理</el-menu-item>
         <el-menu-item index="/coaches">教练管理</el-menu-item>
         <el-menu-item index="/orders">订单管理</el-menu-item>
+        <el-menu-item index="/coupons">优惠券</el-menu-item>
         <el-menu-item index="/members">学员管理</el-menu-item>
         <el-menu-item index="/reviews">评价管理</el-menu-item>
         <el-menu-item index="/schedule">预约课表</el-menu-item>

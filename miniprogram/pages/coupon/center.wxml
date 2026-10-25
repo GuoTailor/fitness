@@ -1,0 +1,18 @@
+<view class="page">
+  <view class="coupon" wx:for="{{items}}" wx:key="templateId">
+    <view class="c-left">
+      <view class="c-label">{{item.label}}</view>
+      <view class="c-scope">{{item.scopeText}}</view>
+    </view>
+    <view class="c-right">
+      <view class="c-name">{{item.name}}</view>
+      <view class="c-valid">{{item.validText}}</view>
+      <button size="mini" class="c-btn {{item.claimable ? '' : 'c-btn-off'}}"
+              disabled="{{!item.claimable}}" bindtap="onClaim" data-index="{{index}}">
+        {{item.claimable ? '领取' : '已领取'}}
+      </button>
+    </view>
+  </view>
+  <view class="empty" wx:if="{{!loading && !items.length}}">暂无可领的券，敬请期待</view>
+  <view class="loading" wx:if="{{loading}}">加载中…</view>
+</view>

@@ -15,9 +15,14 @@ import (
 	"fitness/internal/wechat"
 )
 
-func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.MiniProgram, pay wechat.PaymentProvider) *gin.Engine {
+func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.MiniProgram, pay wechat.PaymentProvider) (*gin.Engine, error) {
 	if cfg.Server.Mode == "release" {
 		gin.SetMode(gin.ReleaseMode)
+	}
+	// 上传目录初始化（图片落本地磁盘）
+	uploadSvc, err := service.NewUploadService(cfg.Upload)
+	if err != nil {
+		return nil, err
 	}
 	r := gin.New()
 	// P0-5：不信任任何代理头（空配置时 ClientIP 取直连地址，防 XFF 伪造绕过限流）；
@@ -25,15 +30,19 @@ func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.Mini
 	if err := r.SetTrustedProxies(cfg.Server.TrustedProxies); err != nil {
 		gin.DefaultErrorWriter.Write([]byte("SetTrustedProxies: " + err.Error()))
 	}
-	// E1：请求体上限 2MB（无文件上传场景），防超大包拖垮服务
+	// E1：请求体上限（multipart 上传单图 ≤2MB 由服务层限制，此处 10MB 防超大包拖垮服务）
 	r.Use(func(c *gin.Context) {
-		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 2<<20)
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 10<<20)
 		c.Next()
 	})
 	r.Use(gin.Logger(), gin.Recovery(), middleware.CORS(cfg.Server.CORSOrigins))
+	// 上传文件静态直出（开发模式服务直出；生产建议 nginx alias 同一目录）
+	r.Static("/uploads", uploadSvc.Dir())
 
+	couponSvc := service.NewCouponService(db)
 	authSvc := service.NewAuthService(db, tokens, mp).
-		WithLockout(middleware.NewAdminLockout(5, 15)) // 连续失败5次锁15分钟
+		WithLockout(middleware.NewAdminLockout(5, 15)). // 连续失败5次锁15分钟
+		WithCouponGifts(couponSvc)                     // 新用户自动发新人礼包
 	cfgSvc := service.NewConfigService(db)
 	shopSvc := service.NewShopService(db, cfg.OwnerID)
 	orderSvc := service.NewOrderService(db, cfgSvc, pay)
@@ -42,7 +51,7 @@ func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.Mini
 	bookingSvc := service.NewBookingService(db, cfgSvc).WithNotify(notifySvc)
 	groupSvc := service.NewGroupService(db, cfgSvc).WithNotify(notifySvc)
 	verifySvc := service.NewVerifyService(db)
-	reviewSvc := service.NewReviewService(db, cfgSvc)
+	reviewSvc := service.NewReviewService(db, cfgSvc).WithUploadPrefixes(cfg.Upload.BaseURL)
 	statsSvc := service.NewStatsService(db)
 
 	authH := handler.NewAuthHandler(authSvc)
@@ -56,6 +65,10 @@ func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.Mini
 	adminBookingH := handler.NewAdminBookingHandler(db, bookingSvc, verifySvc)
 	reviewH := handler.NewReviewHandler(reviewSvc, verifySvc, cfg.Notify)
 	statsH := handler.NewStatsHandler(statsSvc)
+	uploadH := handler.NewUploadHandler(uploadSvc)
+	miscH := handler.NewMiscHandler(cfgSvc)
+	couponH := handler.NewCouponHandler(couponSvc)
+	adminCouponH := handler.NewAdminCouponHandler(couponSvc)
 
 	r.GET("/healthz", handler.Ping)
 
@@ -63,6 +76,8 @@ func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.Mini
 	payH := handler.NewPayHandler(orderSvc, pay)
 	r.POST("/api/v1/pay/notify", payH.Notify)
 	r.POST("/api/v1/pay/refund/notify", payH.RefundNotify)
+	// 协议页（公开内容，后台可编辑）
+	r.GET("/api/v1/agreement", miscH.Agreement)
 
 	// ---- 学员端 / 教练端（同小程序）----
 	api := r.Group("/api/v1")
@@ -84,6 +99,13 @@ func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.Mini
 		api.POST("/orders/:id/refund", middleware.RequireUser(), orderH.ApplyRefund)
 		api.GET("/member/packages", middleware.RequireUser(), orderH.MyPackages)
 		api.GET("/member/packages/:id/transactions", middleware.RequireUser(), orderH.MyTransactions)
+		// 优惠券（领券中心 / 我的券包 / 可用券）
+		api.GET("/coupons/center", middleware.RequireUser(), couponH.Center)
+		api.GET("/coupons/mine", middleware.RequireUser(), couponH.Mine)
+		api.GET("/coupons/usable", middleware.RequireUser(), couponH.Usable)
+		api.POST("/coupons/:id/claim", middleware.RequireUser(), couponH.Claim)
+		// 图片上传（评价图等）
+		api.POST("/uploads", middleware.RequireUser(), uploadH.Create)
 
 		// 私教预约
 		api.GET("/coaches/:id/slots", bookingH.Slots)
@@ -173,11 +195,17 @@ func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.Mini
 		// 运营配置（规则类，仅老板；查看全员）
 		a.GET("/configs", adminShopH.ListConfigs)
 		a.POST("/configs", middleware.RequireBoss(), adminShopH.SaveConfig)
+		// 优惠券（建券/停用/定向发=资金类操作，仅老板；列表查看全员）
+		a.GET("/coupons", adminCouponH.List)
+		a.POST("/coupons", middleware.RequireBoss(), adminCouponH.Save)
+		a.POST("/coupons/:id", middleware.RequireBoss(), adminCouponH.Save)
+		a.POST("/coupons/:id/status", middleware.RequireBoss(), adminCouponH.Toggle)
+		a.POST("/coupons/:id/grant", middleware.RequireBoss(), adminCouponH.Grant)
 		// 评价管理
 		a.GET("/reviews", reviewH.AdminList)
 		a.POST("/reviews/:id/audit", reviewH.AdminAudit)
 		a.POST("/reviews/:id/featured", reviewH.AdminFeatured)
 	}
 
-	return r
+	return r, nil
 }

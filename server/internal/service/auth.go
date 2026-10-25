@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
+	"strings"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -21,6 +23,7 @@ type AuthService struct {
 	tokens  *auth.Manager
 	mp      wechat.MiniProgram
 	lockout *middleware.AdminLockout // 可为 nil（单测不启用）
+	coupons *CouponService           // 可为 nil（未接新人礼包）
 }
 
 func NewAuthService(db *gorm.DB, tokens *auth.Manager, mp wechat.MiniProgram) *AuthService {
@@ -30,6 +33,12 @@ func NewAuthService(db *gorm.DB, tokens *auth.Manager, mp wechat.MiniProgram) *A
 // WithLockout 启用后台登录失败锁定
 func (s *AuthService) WithLockout(l *middleware.AdminLockout) *AuthService {
 	s.lockout = l
+	return s
+}
+
+// WithCouponGifts 接入优惠券服务（新用户自动发新人礼包）
+func (s *AuthService) WithCouponGifts(c *CouponService) *AuthService {
+	s.coupons = c
 	return s
 }
 
@@ -51,6 +60,7 @@ func (s *AuthService) UserLogin(ctx context.Context, code string) (*LoginResult,
 		return nil, errs.Wrap(errs.CodeUnauthorized, "微信登录失败", err)
 	}
 	var user model.User
+	created := false
 	err = s.db.Where("openid = ?", session.OpenID).First(&user).Error
 	if err == gorm.ErrRecordNotFound {
 		user = model.User{OpenID: session.OpenID, UnionID: session.UnionID, Nickname: "微信用户"}
@@ -59,12 +69,17 @@ func (s *AuthService) UserLogin(ctx context.Context, code string) (*LoginResult,
 			if err2 := s.db.Where("openid = ?", session.OpenID).First(&user).Error; err2 != nil {
 				return nil, errs.Server(err, "创建用户失败")
 			}
+		} else {
+			created = true
 		}
 	} else if err != nil {
 		return nil, errs.Server(err, "查询用户失败")
 	}
 	if user.Status != 1 {
 		return nil, errs.Forbidden("账号已被禁用")
+	}
+	if created {
+		s.newcomerGifts(ctx, user.ID) // 新人礼包：失败不影响登录
 	}
 	token, err := s.tokens.Issue(user.ID, auth.RoleUser, "")
 	if err != nil {
@@ -79,13 +94,53 @@ func (s *AuthService) UserLogin(ctx context.Context, code string) (*LoginResult,
 	return res, nil
 }
 
-// BindPhone 手机号快速授权绑定
+// newcomerGifts 新用户自动发放新人礼包（marketing.newcomer_gift_templates，
+// CSV 券模板 ID；空配置不发放；单券失败只记日志）
+func (s *AuthService) newcomerGifts(ctx context.Context, userID int64) {
+	if s.coupons == nil {
+		return
+	}
+	raw := NewConfigService(s.db).Get(ctx, model.CfgNewcomerGiftTemplates, "")
+	if strings.TrimSpace(raw) == "" {
+		return
+	}
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		id, err := strconv.ParseInt(part, 10, 64)
+		if err != nil || id <= 0 {
+			continue
+		}
+		if _, err := s.coupons.Grant(ctx, userID, id); err != nil {
+			log.Printf("[newcomer-gift] 用户 %d 发放券模板 %d 失败: %v", userID, id, err)
+		}
+	}
+}
+
+// BindPhone 手机号快速授权绑定（phone 全局唯一：一人一号，新人价判重的数据前提）
 func (s *AuthService) BindPhone(ctx context.Context, userID int64, phoneCode string) (string, error) {
 	phone, err := s.mp.GetPhoneNumber(ctx, phoneCode)
 	if err != nil {
 		return "", errs.Wrap(errs.CodeBiz, "获取手机号失败", err)
 	}
-	if err := s.db.Model(&model.User{}).Where("id = ?", userID).Update("phone", phone).Error; err != nil {
+	if phone == "" {
+		return "", errs.BadParam("手机号为空")
+	}
+	var dup int64
+	if err := s.db.WithContext(ctx).Model(&model.User{}).
+		Where("phone = ? AND id <> ?", phone, userID).Count(&dup).Error; err != nil {
+		return "", errs.Server(err, "校验手机号失败")
+	}
+	if dup > 0 {
+		return "", errs.Biz("该手机号已绑定其他账号")
+	}
+	err = s.db.WithContext(ctx).Model(&model.User{}).Where("id = ?", userID).Update("phone", phone).Error
+	if isDuplicateKey(err) { // 唯一索引兜底（并发绑定同一号）
+		return "", errs.Biz("该手机号已绑定其他账号")
+	}
+	if err != nil {
 		return "", errs.Server(err, "绑定手机号失败")
 	}
 	return phone, nil

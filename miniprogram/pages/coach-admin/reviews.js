@@ -16,8 +16,13 @@ Page({
       x.nickname = (x.nickname || '学员').slice(0, 12)
       x.timeText = String(x.review.createdAt).slice(0, 10)
       x.starsArr = [1, 2, 3, 4, 5].map((i) => i <= x.review.rating)
+      x.images = x.images || []
     })
     this.setData({ items })
+  },
+
+  onPreview(e) {
+    wx.previewImage({ current: e.currentTarget.dataset.url, urls: [e.currentTarget.dataset.url] })
   },
 
   async onReply(e) {

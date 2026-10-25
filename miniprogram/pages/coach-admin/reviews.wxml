@@ -11,6 +11,14 @@
       <view class="time">{{item.timeText}}</view>
     </view>
     <view class="content" wx:if="{{item.review.content}}">{{item.review.content}}</view>
+    <view class="imgs" wx:if="{{item.images.length}}">
+      <image wx:for="{{item.images}}" wx:for-item="img" wx:key="*this" class="r-img"
+             src="{{img}}" mode="aspectFill" bindtap="onPreview" data-url="{{img}}" />
+    </view>
+    <view class="imgs" wx:if="{{item.images.length}}">
+      <image wx:for="{{item.images}}" wx:for-item="img" wx:key="*this" class="r-img"
+             src="{{img}}" mode="aspectFill" bindtap="onPreview" data-url="{{img}}" />
+    </view>
     <view class="reply" wx:if="{{item.review.coachReply}}">
       <view class="reply-tag">我的回复</view>
       <view>{{item.review.coachReply}}</view>

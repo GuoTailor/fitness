@@ -64,6 +64,7 @@
           <el-descriptions-item label="订单号">{{ detail.order.orderNo }}</el-descriptions-item>
           <el-descriptions-item label="商品">{{ detail.order.title }}</el-descriptions-item>
           <el-descriptions-item label="金额">¥{{ yuan(detail.order.amount) }}（已退 ¥{{ yuan(detail.order.refundAmount) }}）</el-descriptions-item>
+        <el-descriptions-item label="优惠" v-if="detail.order.couponAmount > 0">优惠券 -¥{{ yuan(detail.order.couponAmount) }}<span v-if="detail.order.newcomerUsed">；新人价</span></el-descriptions-item>
           <el-descriptions-item label="状态">{{ statusText(detail.order.status) }}</el-descriptions-item>
           <el-descriptions-item label="微信单号">{{ detail.order.transactionId || '—' }}</el-descriptions-item>
           <el-descriptions-item label="课时账户">

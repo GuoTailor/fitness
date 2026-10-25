@@ -33,20 +33,21 @@ func (h *ReviewHandler) Reviewable(c *gin.Context) {
 	resp.OK(c, gin.H{"items": list})
 }
 
-// Submit POST /api/v1/reviews {verificationId, packageRating, coachRating, content}
+// Submit POST /api/v1/reviews {verificationId, packageRating, coachRating, content, images[]}
 func (h *ReviewHandler) Submit(c *gin.Context) {
 	var req struct {
-		VerificationID int64  `json:"verificationId" binding:"required"`
-		PackageRating  int    `json:"packageRating" binding:"required,min=1,max=5"`
-		CoachRating    int    `json:"coachRating" binding:"required,min=1,max=5"`
-		Content        string `json:"content"`
+		VerificationID int64    `json:"verificationId" binding:"required"`
+		PackageRating  int      `json:"packageRating" binding:"required,min=1,max=5"`
+		CoachRating    int      `json:"coachRating" binding:"required,min=1,max=5"`
+		Content        string   `json:"content"`
+		Images         []string `json:"images"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.Handle(c, service.BadParamJSON())
 		return
 	}
 	err := h.review.Submit(c.Request.Context(), middleware.UserID(c),
-		req.VerificationID, req.PackageRating, req.CoachRating, req.Content)
+		req.VerificationID, req.PackageRating, req.CoachRating, req.Content, req.Images)
 	if err != nil {
 		resp.Handle(c, err)
 		return

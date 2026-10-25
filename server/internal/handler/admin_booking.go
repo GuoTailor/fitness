@@ -73,7 +73,7 @@ func (h *AdminBookingHandler) ScheduleView(c *gin.Context) {
 	for _, b := range bookings {
 		bRows = append(bRows, map[string]interface{}{
 			"booking": b, "coachName": coaches[b.CoachID].Name,
-			"userName": users[b.UserID].Nickname, "userPhone": users[b.UserID].Phone,
+			"userName": users[b.UserID].Nickname, "userPhone": users[b.UserID].PlainPhone(),
 			"startLabel": minuteLabel(b.StartMinute),
 		})
 	}

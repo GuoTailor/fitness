@@ -16,12 +16,21 @@
     <navigator class="menu-item" url="/pages/booking/list">我的预约</navigator>
     <navigator class="menu-item" url="/pages/booking/calendar">团课课表</navigator>
     <navigator class="menu-item" url="/pages/order/list">课包订单</navigator>
+    <navigator class="menu-item" url="/pages/coupon/mine">我的优惠券</navigator>
+    <navigator class="menu-item coupon-entry" url="/pages/coupon/center">领券中心 ›</navigator>
     <navigator class="menu-item" url="/pages/review/create">待评价课程</navigator>
     <navigator class="menu-item" url="/pages/review/list">我的评价</navigator>
     <button wx:if="{{!user.phone}}" class="menu-btn" open-type="getPhoneNumber" bindgetphonenumber="onGetPhone" loading="{{phoneBinding}}">
       绑定手机号
     </button>
+    <button class="menu-btn" open-type="contact">联系客服</button>
     <navigator class="menu-item coach-entry" url="/pages/coach-admin/index" wx:if="{{isCoach}}">教练工作台 ›</navigator>
     <button class="menu-btn logout" bindtap="onLogout">退出登录</button>
+  </view>
+
+  <view class="links">
+    <navigator url="/pages/agreement/agreement?type=privacy">隐私政策</navigator>
+    <text class="dot">·</text>
+    <navigator url="/pages/agreement/agreement?type=user">用户协议</navigator>
   </view>
 </view>

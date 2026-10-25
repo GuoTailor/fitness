@@ -46,5 +46,12 @@ notify:
 video:
   base_url: "http://localhost:8080/videos"
 
+# 图片上传（评价图片等）。文件落本地磁盘，开发模式由服务直出 /uploads/，
+# 生产 nginx 配 alias /uploads/ 指向同一目录。
+upload:
+  dir: "data/uploads"
+  base_url: "http://localhost:8080/uploads"
+  max_mb: 2
+
 # 平台化预留：单店自营阶段固定 1
 owner_id: 1

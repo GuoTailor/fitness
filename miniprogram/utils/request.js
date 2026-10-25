@@ -36,4 +36,34 @@ function request({ url, method = 'GET', data = {}, header = {} }) {
   })
 }
 
-module.exports = { request }
+// 图片上传：multipart 字段 file，返回 {url}
+function uploadFile(filePath) {
+  const app = getApp()
+  return new Promise((resolve, reject) => {
+    wx.uploadFile({
+      url: app.globalData.apiBase + '/api/v1/uploads',
+      filePath,
+      name: 'file',
+      header: { Authorization: 'Bearer ' + (wx.getStorageSync('token') || '') },
+      success(res) {
+        let body = {}
+        try { body = JSON.parse(res.data || '{}') } catch (e) { /* ignore */ }
+        if (res.statusCode === 401 || body.code === 40101) {
+          wx.removeStorageSync('token')
+          return reject(new Error('登录已失效'))
+        }
+        if (body.code !== 0) {
+          wx.showToast({ title: body.msg || '上传失败', icon: 'none' })
+          return reject(new Error(body.msg || '上传失败'))
+        }
+        resolve(body.data.url)
+      },
+      fail(err) {
+        wx.showToast({ title: '上传失败，请检查网络', icon: 'none' })
+        reject(err)
+      },
+    })
+  })
+}
+
+module.exports = { request, uploadFile }

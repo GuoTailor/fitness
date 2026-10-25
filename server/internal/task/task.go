@@ -76,6 +76,7 @@ func (r *Runner) RunOnce(ctx context.Context) {
 	run("课包过期", func() (int64, error) { return r.ExpireMemberPackages(ctx) })
 	run("预约过期", func() (int64, error) { return r.ExpireBookings(ctx) })
 	run("团课结课", func() (int64, error) { return r.FinishGroupClasses(ctx) })
+	run("优惠券过期", func() (int64, error) { return r.ExpireUserCoupons(ctx) })
 	run("退款轮询", func() (int64, error) {
 		n, err := r.orders.PollApprovedRefunds(ctx)
 		return int64(n), err
@@ -241,5 +242,13 @@ func (r *Runner) FinishGroupClasses(ctx context.Context) (int64, error) {
 			[]string{model.GCStatusEnrolling, model.GCStatusFulfilled, model.GCStatusClosed},
 			today, today, nowMinute).
 		Update("status", model.GCStatusFinished)
+	return res.RowsAffected, res.Error
+}
+
+// ExpireUserCoupons 可用券过期：expire_at 已过 → expired（读路径有懒更新，此处全量兜底）
+func (r *Runner) ExpireUserCoupons(ctx context.Context) (int64, error) {
+	res := r.db.WithContext(ctx).Model(&model.UserCoupon{}).
+		Where("status = ? AND expire_at <= ?", model.CouponUsable, time.Now()).
+		Update("status", model.CouponExpired)
 	return res.RowsAffected, res.Error
 }

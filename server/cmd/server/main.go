@@ -93,7 +93,10 @@ func main() {
 	}
 
 	tokens := auth.NewManager(cfg.JWT.Secret, cfg.JWT.ExpireHours)
-	r := router.Build(cfg, gdb, tokens, mp, pay)
+	r, err := router.Build(cfg, gdb, tokens, mp, pay)
+	if err != nil {
+		log.Fatalf("初始化路由失败: %v", err)
+	}
 
 	// 定时任务：消息触达 + 状态推进（关单/过期/结课/退款轮询），进程内每小时扫描
 	taskCtx, taskCancel := context.WithCancel(context.Background())

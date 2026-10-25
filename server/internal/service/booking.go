@@ -405,7 +405,7 @@ func (s *BookingService) CoachDay(ctx context.Context, coachID int64, date strin
 	for _, b := range bookings {
 		u := users[b.UserID]
 		out = append(out, map[string]interface{}{
-			"booking": b, "userName": u.Nickname, "userPhone": u.Phone, "startLabel": minuteLabel(b.StartMinute),
+			"booking": b, "userName": u.Nickname, "userPhone": u.PlainPhone(), "startLabel": minuteLabel(b.StartMinute),
 		})
 	}
 	return out, nil

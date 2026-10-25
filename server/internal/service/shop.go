@@ -79,8 +79,9 @@ func (s *ShopService) enrich(ctx context.Context, pkgs []model.CoursePackage) ([
 	return items, int64(len(items)), nil
 }
 
-// PackageDetail 详情：规格 + 在售教练 + 评分 + 精选评价若干
-func (s *ShopService) PackageDetail(ctx context.Context, id int64) (map[string]interface{}, error) {
+// PackageDetail 详情：规格 + 在售教练 + 评分 + 精选评价若干。
+// userID>0 时附带新人价资格（server 下单时仍终判，此处仅供展示）。
+func (s *ShopService) PackageDetail(ctx context.Context, id, userID int64) (map[string]interface{}, error) {
 	var pkg model.CoursePackage
 	err := s.db.WithContext(ctx).
 		Where("id = ? AND owner_id = ? AND status = 1", id, s.owner).First(&pkg).Error
@@ -89,6 +90,21 @@ func (s *ShopService) PackageDetail(ctx context.Context, id int64) (map[string]i
 	}
 	var skus []model.PackageSKU
 	s.db.WithContext(ctx).Where("package_id = ? AND status = 1", id).Order("sort, price").Find(&skus)
+
+	newcomerOK := false
+	if userID > 0 {
+		newcomerOK = newcomerEligible(ctx, s.db, userID)
+	}
+	type skuView struct {
+		model.PackageSKU
+		NewcomerEligible bool `json:"newcomerEligible"` // 设有新人价且当前用户可享
+	}
+	skuViews := make([]skuView, 0, len(skus))
+	for _, sk := range skus {
+		v := skuView{PackageSKU: sk}
+		v.NewcomerEligible = newcomerOK && sk.NewcomerPrice != nil && *sk.NewcomerPrice > 0
+		skuViews = append(skuViews, v)
+	}
 
 	var coaches []model.Coach
 	s.db.WithContext(ctx).
@@ -109,7 +125,7 @@ func (s *ShopService) PackageDetail(ctx context.Context, id int64) (map[string]i
 
 	return map[string]interface{}{
 		"package":     pkg,
-		"skus":        skus,
+		"skus":        skuViews,
 		"coaches":     coaches,
 		"ratingAvg":   ratingAvg,
 		"ratingCount": ratingCount,

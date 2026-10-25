@@ -1,5 +1,5 @@
 const app = getApp()
-const { request } = require('../../utils/request')
+const { request, uploadFile } = require('../../utils/request')
 
 Page({
   data: {
@@ -8,6 +8,8 @@ Page({
     pkgStars: 5,
     coachStars: 5,
     content: '',
+    images: [],       // 已上传图片 URL（≤4 张，站内上传）
+    uploading: false,
     submitting: false,
   },
 
@@ -47,6 +49,41 @@ Page({
     this.setData({ content: e.detail.value })
   },
 
+  async onChooseImage() {
+    const left = 4 - this.data.images.length
+    if (left <= 0) return wx.showToast({ title: '最多上传 4 张', icon: 'none' })
+    const res = await wx.chooseMedia({ count: left, mediaType: ['image'], sizeType: ['compressed'] })
+    const picked = res.tempFiles || []
+    if (!picked.length) return
+    this.setData({ uploading: true })
+    try {
+      const urls = []
+      for (const f of picked) {
+        if (f.size > 2 * 1024 * 1024) {
+          wx.showToast({ title: '单张图片不超过 2MB', icon: 'none' })
+          continue
+        }
+        urls.push(await uploadFile(f.tempFilePath))
+      }
+      this.setData({ images: this.data.images.concat(urls).slice(0, 4) })
+    } catch (e) {
+      // uploadFile 已 toast
+    } finally {
+      this.setData({ uploading: false })
+    }
+  },
+
+  onRemoveImage(e) {
+    const i = Number(e.currentTarget.dataset.index)
+    const arr = this.data.images.slice()
+    arr.splice(i, 1)
+    this.setData({ images: arr })
+  },
+
+  onPreview(e) {
+    wx.previewImage({ current: this.data.images[Number(e.currentTarget.dataset.index)], urls: this.data.images })
+  },
+
   async onSubmit() {
     if (this.data.submitting) return
     const cur = this.data.current
@@ -61,6 +98,7 @@ Page({
           packageRating: this.data.pkgStars,
           coachRating: this.data.coachStars,
           content: this.data.content,
+          images: this.data.images,
         },
       })
       wx.showToast({ title: '评价成功，感谢反馈', icon: 'success' })

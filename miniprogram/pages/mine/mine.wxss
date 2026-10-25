@@ -87,3 +87,22 @@
   color: #4a90ff;
   font-weight: 600;
 }
+
+.coupon-entry {
+  color: #e64340;
+  font-weight: 600;
+}
+
+.links {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16rpx;
+  padding: 8rpx 0 40rpx;
+  font-size: 24rpx;
+  color: #999;
+}
+
+.dot {
+  color: #ddd;
+}

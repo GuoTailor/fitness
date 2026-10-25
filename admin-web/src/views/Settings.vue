@@ -2,7 +2,7 @@
   <div>
     <el-card>
       <template #header>运营规则</template>
-      <el-table :data="configs" v-loading="loading">
+      <el-table :data="tableConfigs" v-loading="loading">
         <el-table-column prop="key" label="配置项" width="260" />
         <el-table-column label="值" width="140">
           <template #default="{ row }">
@@ -16,6 +16,24 @@
           </template>
         </el-table-column>
       </el-table>
+    </el-card>
+
+    <el-card style="margin-top: 16px">
+      <template #header>协议内容（小程序「我的」页展示）</template>
+      <el-form label-width="90px">
+        <el-form-item label="隐私政策">
+          <el-input v-model="privacy" type="textarea" :rows="8" placeholder="收集手机号等信息的用途与保护说明；留空则小程序展示占位文案" />
+        </el-form-item>
+        <el-form-item>
+          <el-button size="small" type="primary" @click="saveAgreement('misc.privacy_content', privacy)">保存隐私政策</el-button>
+        </el-form-item>
+        <el-form-item label="用户协议">
+          <el-input v-model="agreement" type="textarea" :rows="8" placeholder="课程购买/预约/退款规则等约定；留空则小程序展示占位文案" />
+        </el-form-item>
+        <el-form-item>
+          <el-button size="small" type="primary" @click="saveAgreement('misc.agreement_content', agreement)">保存用户协议</el-button>
+        </el-form-item>
+      </el-form>
     </el-card>
 
     <el-card style="margin-top: 16px">
@@ -76,7 +94,7 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { listConfigs, saveConfig, listBanners, saveBanner, deleteBanner } from '../api/admin'
 
@@ -85,15 +103,27 @@ const banners = ref([])
 const loading = ref(false)
 const dialog = ref(false)
 const form = reactive({ id: 0 })
+const privacy = ref('')
+const agreement = ref('')
+// 协议正文较长，单独用大文本框编辑，不进规则表格
+const LONG_KEYS = ['misc.privacy_content', 'misc.agreement_content']
+const tableConfigs = computed(() => configs.value.filter((c) => !LONG_KEYS.includes(c.key)))
 
 async function load() {
   loading.value = true
   try {
     configs.value = await listConfigs()
     banners.value = await listBanners()
+    privacy.value = configs.value.find((c) => c.key === LONG_KEYS[0])?.value || ''
+    agreement.value = configs.value.find((c) => c.key === LONG_KEYS[1])?.value || ''
   } finally {
     loading.value = false
   }
+}
+
+async function saveAgreement(key, value) {
+  await saveConfig({ key, value, remark: '' })
+  ElMessage.success('已保存')
 }
 
 async function save(row) {

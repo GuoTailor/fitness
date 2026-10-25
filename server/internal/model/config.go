@@ -11,6 +11,9 @@ const (
 	CfgMemberWarnExpireDays      = "member.warn_expire_days"
 	CfgReviewInviteAfterDays     = "review.invite_after_days"
 	CfgReviewAutoApprove         = "review.auto_approve" // 1=评价免审直接通过
+	CfgNewcomerGiftTemplates     = "marketing.newcomer_gift_templates" // 新人礼包券模板 ID CSV，空=不发
+	CfgPrivacyContent            = "misc.privacy_content"              // 隐私政策正文
+	CfgAgreementContent          = "misc.agreement_content"            // 用户协议正文
 )
 
 // AppConfig 运营配置 KV

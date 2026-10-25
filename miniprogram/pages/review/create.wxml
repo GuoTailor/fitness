@@ -41,6 +41,13 @@
       </view>
       <textarea class="content" placeholder="说说上课感受，帮助更多小伙伴（选填）"
                 maxlength="500" value="{{content}}" bindinput="onInput" />
+      <view class="img-grid">
+        <view class="img-item" wx:for="{{images}}" wx:key="*this">
+          <image src="{{item}}" mode="aspectFill" bindtap="onPreview" data-index="{{index}}" />
+          <view class="img-del" catchtap="onRemoveImage" data-index="{{index}}">×</view>
+        </view>
+        <view class="img-add" wx:if="{{images.length < 4}}" bindtap="onChooseImage">{{uploading ? '···' : '+'}}</view>
+      </view>
     </view>
 
     <view class="submit-wrap">

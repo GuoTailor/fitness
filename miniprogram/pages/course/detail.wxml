@@ -19,9 +19,20 @@
         bindtap="onSku" data-index="{{index}}">
         <view class="sku-name">{{item.name}}</view>
         <view class="sku-sub">{{item.sessions}}节 · 有效期{{item.validDays}}天</view>
-        <view class="sku-price">¥{{item.priceYuan}}</view>
+        <view class="sku-price">
+          <text wx:if="{{item.newcomerYuan}}" class="np">¥{{item.newcomerYuan}}</text>
+          <text class="{{item.newcomerYuan ? 'strike' : ''}}">¥{{item.priceYuan}}</text>
+          <text wx:if="{{item.newcomerYuan}}" class="np-tag">新人价</text>
+        </view>
       </view>
     </view>
+    <view class="coupon-bar" wx:if="{{selectedSku >= 0}}" bindtap="onPickCoupon">
+      <text class="c-label">优惠券</text>
+      <text class="c-value">{{couponIndex >= 0 ? coupons[couponIndex].name + ' ' + coupons[couponIndex].label + '（-¥' + coupons[couponIndex].benefitYuan + '）' : (coupons.length ? '不使用优惠券' : '暂无可用券')}}</text>
+      <text class="c-go" catchtap="onGoCouponCenter">领券</text>
+      <text class="c-arrow">›</text>
+    </view>
+    <view class="np-tip" wx:if="{{selectedSku >= 0 && detail.skus[selectedSku].newcomerYuan}}">新人专享价已生效（每人限一次）；新人价与优惠券不叠加，自动按最优结算</view>
   </view>
 
   <view class="card">
@@ -65,6 +76,10 @@
 
   <view class="footer-bar-space"></view>
   <view class="footer-bar">
+    <view class="pay-amount" wx:if="{{payYuan}}">
+      <text class="pa-label">预估合计</text>
+      <text class="pa-num">¥{{payYuan}}</text>
+    </view>
     <button class="buy-btn {{selectedSku < 0 ? 'disabled' : ''}}" disabled="{{buying}}" bindtap="onBuy">
       {{buying ? '处理中…' : (selectedSku < 0 ? '请选择规格' : '立即购买')}}
     </button>

@@ -18,6 +18,9 @@
     "pages/coach-admin/verify",
     "pages/coach-admin/reviews",
     "pages/order/list",
+    "pages/coupon/center",
+    "pages/coupon/mine",
+    "pages/agreement/agreement",
     "pages/training/index",
     "pages/mine/mine"
   ],

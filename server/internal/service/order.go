@@ -40,12 +40,12 @@ func genRefundNo() string {
 	return "RF" + time.Now().Format("20060102150405") + hex.EncodeToString(b)
 }
 
-// Create 下单（P0 coupon 必须为 0，P1 接券系统）。
+// Create 下单（P1 起支持优惠券与新人价）。
 // 下单即快照 SKU 的课时/有效期/单价（M5）：后台删改规格不影响本单入账与退款。
+// 金额规则：券优惠与新人价不叠加、只取其一（取低价，规划 §7.1）；
+// 优惠一律封顶 price-1 分（微信要求实付>0）；券核销（usable→used 绑定订单）
+// 在订单事务内完成，任何不满足整体回滚。
 func (s *OrderService) Create(ctx context.Context, userID int64, skuID int64, couponID int64) (*model.Order, error) {
-	if couponID != 0 {
-		return nil, errs.Biz("优惠券功能即将上线，敬请期待")
-	}
 	var sku model.PackageSKU
 	if err := s.db.WithContext(ctx).Where("id = ? AND status = 1", skuID).First(&sku).Error; err != nil {
 		return nil, errs.NotFound("课包规格不存在或已停售")
@@ -61,6 +61,52 @@ func (s *OrderService) Create(ctx context.Context, userID int64, skuID int64, co
 	if sku.Sessions > 0 {
 		unitPrice = sku.Price / int64(sku.Sessions)
 	}
+
+	// ---- 优惠计算（事务外预读，事务内终校验）----
+	newcomerOff := newcomerDiscountOf(ctx, s.db, userID, &sku)
+	var couponOff int64
+	if couponID != 0 {
+		var uc model.UserCoupon
+		if err := s.db.WithContext(ctx).
+			Where("id = ? AND user_id = ? AND status = ? AND expire_at > ?",
+				couponID, userID, model.CouponUsable, time.Now()).First(&uc).Error; err != nil {
+			return nil, errs.Biz("优惠券不可用或已过期")
+		}
+		var tpl model.CouponTemplate
+		if err := s.db.WithContext(ctx).First(&tpl, uc.TemplateID).Error; err != nil {
+			return nil, errs.Biz("优惠券信息异常")
+		}
+		if tpl.PackageID != 0 && tpl.PackageID != pkg.ID {
+			return nil, errs.Biz("该优惠券不适用于此课包")
+		}
+		couponOff = CouponBenefit(&tpl, sku.Price)
+		if couponOff <= 0 {
+			return nil, errs.Biz("订单金额未满足用券条件")
+		}
+	}
+	useNewcomer := false
+	applyCoupon := int64(0)
+	amount := sku.Price
+	switch {
+	case newcomerOff > couponOff:
+		useNewcomer = true
+		amount = sku.Price - newcomerOff
+	case couponOff > 0:
+		applyCoupon = couponID
+		amount = sku.Price - couponOff
+	}
+	if amount < 1 {
+		amount = 1
+	}
+
+	newcomerUsed := int8(0)
+	if useNewcomer {
+		newcomerUsed = 1
+	}
+	couponAmount := int64(0)
+	if applyCoupon != 0 {
+		couponAmount = couponOff
+	}
 	order := model.Order{
 		OrderNo:   genOrderNo(),
 		OwnerID:   pkg.OwnerID,
@@ -68,22 +114,86 @@ func (s *OrderService) Create(ctx context.Context, userID int64, skuID int64, co
 		PackageID: pkg.ID,
 		SkuID:     sku.ID,
 		Title:     fmt.Sprintf("%s·%s", pkg.Title, sku.Name),
-		Amount:    sku.Price,
+		Amount:    amount,
+		CouponID:  applyCoupon,
+		CouponAmount: couponAmount,
 		Status:    model.OrderStatusPending,
 		SkuSessions:   sku.Sessions,
 		SkuValidDays:  sku.ValidDays,
 		SkuUnitPrice:  unitPrice,
+		NewcomerUsed:  newcomerUsed,
 	}
-	// 订单与支付单同事务创建（M11）：避免只写一半
-	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	// 订单与支付单同事务创建（M11）：避免只写一半；券核销同事务，失败整体回滚
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&order).Error; err != nil {
 			return err
 		}
-		return tx.Create(&model.Payment{OrderID: order.ID, Amount: order.Amount, Status: "created"}).Error
-	}); err != nil {
+		if err := tx.Create(&model.Payment{OrderID: order.ID, Amount: order.Amount, Status: "created"}).Error; err != nil {
+			return err
+		}
+		if applyCoupon != 0 {
+			// 事务内终校验并核销；模板极小概率在预读后被改动时以核销时的优惠额修正订单
+			benefit, err := ApplyCouponForOrder(tx, userID, applyCoupon, order.ID, pkg.ID, sku.Price)
+			if err != nil {
+				return err
+			}
+			if benefit != couponAmount {
+				fixed := sku.Price - benefit
+				if fixed < 1 {
+					fixed = 1
+				}
+				if err := tx.Model(&model.Order{}).Where("id = ?", order.ID).
+					Updates(map[string]interface{}{"amount": fixed, "coupon_amount": benefit}).Error; err != nil {
+					return err
+				}
+				if err := tx.Model(&model.Payment{}).Where("order_id = ?", order.ID).
+					Update("amount", fixed).Error; err != nil {
+					return err
+				}
+				order.Amount, order.CouponAmount = fixed, benefit
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		if ae, ok := err.(*errs.AppError); ok {
+			return nil, ae
+		}
 		return nil, errs.Server(err, "创建订单失败")
 	}
 	return &order, nil
+}
+
+// newcomerDiscountOf 新人价可享优惠额（0=不可享）：SKU 设有新人价 + 已绑手机号 +
+// 该手机号从未用过新人价（status<>closed 的新人价订单判重，唯一索引兜底一号一人）。
+func newcomerDiscountOf(ctx context.Context, db *gorm.DB, userID int64, sku *model.PackageSKU) int64 {
+	if sku.NewcomerPrice == nil || *sku.NewcomerPrice <= 0 || *sku.NewcomerPrice >= sku.Price {
+		return 0
+	}
+	if !newcomerEligible(ctx, db, userID) {
+		return 0
+	}
+	return sku.Price - *sku.NewcomerPrice
+}
+
+// newcomerEligible 手机号维度的新人资格（详情页展示与下单共用一个判定）
+func newcomerEligible(ctx context.Context, db *gorm.DB, userID int64) bool {
+	var user model.User
+	if err := db.WithContext(ctx).Select("id", "phone").First(&user, userID).Error; err != nil || user.Phone == nil {
+		return false
+	}
+	phone := *user.Phone
+	if phone == "" {
+		return false
+	}
+	var used int64
+	if err := db.WithContext(ctx).Model(&model.Order{}).
+		Joins("JOIN user u ON u.id = orders.user_id").
+		Where("u.phone = ? AND orders.newcomer_used = 1 AND orders.status <> ?", phone, model.OrderStatusClosed).
+		Limit(1).Count(&used).Error; err != nil {
+		return false
+	}
+	return used == 0
 }
 
 // Prepay 发起支付。openid 一律取登录用户的服务端记录（E2：不信任客户端传入）。
@@ -371,6 +481,10 @@ func (s *OrderService) finalizeRefund(ctx context.Context, refundID, orderID int
 		if err := tx.Model(&model.Order{}).
 			Where("id = ? AND status = ?", orderID, model.OrderStatusRefund).
 			Update("status", model.OrderStatusRefunded).Error; err != nil {
+			return err
+		}
+		// 用券订单退款：券在有效期内自动返还（usable），过期置 expired 留痕（规划 §7.1）
+		if err := returnCouponOnRefund(tx, &order); err != nil {
 			return err
 		}
 		// 展示口径：退款回退销量（CASE 兼容 sqlite，不用 GREATEST）

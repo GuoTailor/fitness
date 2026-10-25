@@ -39,5 +39,12 @@ export const listReviews = (params) => http.get('/admin/api/v1/reviews', { param
 export const auditReview = (id, action) => http.post(`/admin/api/v1/reviews/${id}/audit`, { action })
 export const featureReview = (id, featured) => http.post(`/admin/api/v1/reviews/${id}/featured`, { featured })
 
+// ---- 优惠券 ----
+export const listCoupons = () => http.get('/admin/api/v1/coupons')
+export const saveCoupon = (data) =>
+  data.id > 0 ? http.post(`/admin/api/v1/coupons/${data.id}`, data) : http.post('/admin/api/v1/coupons', data)
+export const toggleCoupon = (id, status) => http.post(`/admin/api/v1/coupons/${id}/status`, { status })
+export const grantCoupon = (id, userId) => http.post(`/admin/api/v1/coupons/${id}/grant`, { userId })
+
 // 金额（分）→ 元
 export const yuan = (cents) => (cents == null ? '—' : (cents / 100).toFixed(2))

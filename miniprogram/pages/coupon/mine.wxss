@@ -1,0 +1,37 @@
+.page { padding: 24rpx; }
+
+.tabs { display: flex; align-items: center; gap: 32rpx; background: #fff; border-radius: 16rpx; padding: 20rpx 24rpx; margin-bottom: 20rpx; }
+
+.tab { font-size: 28rpx; color: #666; padding-bottom: 6rpx; }
+
+.tab.on { color: #00b578; font-weight: 600; border-bottom: 4rpx solid #00b578; }
+
+.go-center { margin-left: auto; font-size: 24rpx; color: #4a90ff; }
+
+.coupon { display: flex; background: #fff; border-radius: 16rpx; margin-bottom: 20rpx; overflow: hidden; }
+
+.coupon-off { opacity: 0.55; }
+
+.c-left { width: 220rpx; background: linear-gradient(135deg, #00b578, #009a66); color: #fff; display: flex; align-items: center; justify-content: center; padding: 28rpx 12rpx; }
+
+.coupon-off .c-left { background: linear-gradient(135deg, #b7bdbf, #a2a9ab); }
+
+.c-label { font-size: 32rpx; font-weight: 700; }
+
+.c-right { flex: 1; padding: 20rpx 24rpx; display: flex; flex-direction: column; justify-content: center; }
+
+.c-name { font-size: 28rpx; font-weight: 500; }
+
+.c-sub { font-size: 22rpx; color: #999; margin-top: 8rpx; }
+
+.c-status { font-size: 22rpx; margin-top: 8rpx; }
+
+.s-usable { color: #00b578; }
+
+.s-used { color: #999; }
+
+.s-expired { color: #bbb; }
+
+.empty { color: #999; font-size: 26rpx; text-align: center; padding: 120rpx 0; }
+
+.loading { color: #999; font-size: 24rpx; text-align: center; padding: 40rpx 0; }

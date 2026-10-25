@@ -11,6 +11,7 @@ const routes = [
       { path: 'packages', component: () => import('../views/Packages.vue'), meta: { title: '课包管理' } },
       { path: 'coaches', component: () => import('../views/Coaches.vue'), meta: { title: '教练管理' } },
       { path: 'orders', component: () => import('../views/Orders.vue'), meta: { title: '订单管理' } },
+      { path: 'coupons', component: () => import('../views/Coupons.vue'), meta: { title: '优惠券' } },
       { path: 'members', component: () => import('../views/Members.vue'), meta: { title: '学员管理' } },
       { path: 'reviews', component: () => import('../views/Reviews.vue'), meta: { title: '评价管理' } },
       { path: 'schedule', component: () => import('../views/Schedule.vue'), meta: { title: '预约课表' } },

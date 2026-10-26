@@ -30,7 +30,7 @@
       `wechat.mock=false`、`pay.mock=false`、`notify.mock=false`、`mode=release`
 - [ ] 首次启动：`ADMIN_INIT_PASSWORD=<强密码> systemctl start fitness-server`（改默认管理员密码）
 - [ ] 备份 cron：`scripts/backup_db.sh`（每日 3:30，保留 14 天，异机同步）
-- [ ] 课程视频上传到 `/var/www/videos/`，后台课包填 `https://your-domain.com/videos/xxx.mp4`
+- [ ] 课程视频：后台「课包管理 → 介绍视频」直接上传（落 `video.dir`，默认 `/var/www/videos`，需对 `fitness` 用户可写）；也可 scp 到 `/var/www/videos/` 后手填 URL
 
 ## D. 上线前验证（真资质后）
 

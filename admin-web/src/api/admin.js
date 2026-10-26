@@ -1,5 +1,25 @@
 import http from './request'
 
+// ---- 通用 ----
+// 图片上传：返回 { url }，与用户端共用存储（/uploads 静态直出）
+export const uploadImage = (file) => {
+  const fd = new FormData()
+  fd.append('file', file)
+  return http.post('/admin/api/v1/uploads', fd)
+}
+
+// 视频上传：大文件关闭超时，onProgress(0-100) 回报进度
+export const uploadVideo = (file, onProgress) => {
+  const fd = new FormData()
+  fd.append('file', file)
+  return http.post('/admin/api/v1/uploads/video', fd, {
+    timeout: 0,
+    onUploadProgress: (e) => {
+      if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100))
+    },
+  })
+}
+
 // ---- 课包 ----
 export const listPackages = (params) => http.get('/admin/api/v1/packages', { params })
 export const savePackage = (data) =>

@@ -30,6 +30,10 @@ pay:
   notify_url: https://your-domain.com/api/v1/pay/notify
   refund_notify_url: https://your-domain.com/api/v1/pay/refund/notify
 
+# 短信：release 必须关闭 mock；未接入服务商时手机号登录不可用，其余功能正常
+sms:
+  mock: false
+
 notify:
   mock: false
   templates:
@@ -41,6 +45,8 @@ notify:
 
 video:
   base_url: https://your-domain.com/videos
+  dir: /var/www/videos   # 需对运行用户可写（systemd User=fitness）
+  max_mb: 200            # 单个视频上限，nginx 对应 location 的 client_max_body_size 要更大
 
 # 图片上传（评价图等）：文件落服务器本地磁盘，nginx /uploads/ alias 同一目录
 upload:

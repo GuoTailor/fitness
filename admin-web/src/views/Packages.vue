@@ -53,8 +53,37 @@
         <el-form-item label="难度">
           <el-rate v-model="form.difficulty" :max="5" />
         </el-form-item>
-        <el-form-item label="封面图"><el-input v-model="form.coverUrl" placeholder="图片 URL" /></el-form-item>
-        <el-form-item label="介绍视频"><el-input v-model="form.introVideoUrl" placeholder="视频 URL（nginx 静态目录地址）" /></el-form-item>
+        <el-form-item label="封面图">
+          <div class="cover-field">
+            <el-upload :show-file-list="false" :http-request="onCoverUpload"
+                       accept="image/jpeg,image/png,image/webp">
+              <div class="cover-box" v-loading="uploading">
+                <img v-if="form.coverUrl" :src="form.coverUrl" class="cover-preview" />
+                <span v-else class="cover-tip">点击上传<br />jpg/png/webp ≤2MB</span>
+              </div>
+            </el-upload>
+            <div class="cover-url">
+              <el-input v-model="form.coverUrl" placeholder="或直接填写图片 URL" clearable />
+              <el-button v-if="form.coverUrl" link type="danger" @click="form.coverUrl = ''">清除</el-button>
+            </div>
+          </div>
+        </el-form-item>
+        <el-form-item label="介绍视频">
+          <div class="cover-field">
+            <el-upload :show-file-list="false" :http-request="onVideoUpload"
+                       accept="video/mp4,video/webm,video/quicktime">
+              <div class="cover-box" v-loading="videoUploading">
+                <span class="cover-tip">
+                  {{ videoUploading ? `上传中 ${videoPercent}%` : (form.introVideoUrl ? '重新上传' : '点击上传视频') }}
+                </span>
+              </div>
+            </el-upload>
+            <div class="cover-url">
+              <el-input v-model="form.introVideoUrl" placeholder="或直接填写视频 URL（nginx /videos 目录）" clearable />
+            </div>
+          </div>
+          <video v-if="form.introVideoUrl" :src="form.introVideoUrl" controls class="video-preview" />
+        </el-form-item>
         <el-form-item label="课程大纲"><el-input v-model="form.outline" type="textarea" :rows="3" /></el-form-item>
         <el-form-item label="适合人群"><el-input v-model="form.suitable" type="textarea" :rows="2" /></el-form-item>
         <el-form-item label="关联教练">
@@ -94,7 +123,7 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { listPackages, savePackage, listCoaches, yuan } from '../api/admin'
+import { listPackages, savePackage, listCoaches, uploadImage, uploadVideo, yuan } from '../api/admin'
 
 const list = ref([])
 const coaches = ref([])
@@ -105,6 +134,9 @@ const keyword = ref('')
 const loading = ref(false)
 const dialog = ref(false)
 const saving = ref(false)
+const uploading = ref(false)
+const videoUploading = ref(false)
+const videoPercent = ref(0)
 const form = reactive({ id: 0, skus: [], coachIds: [] })
 
 const categoryText = (c) => ({ private: '私教', group: '团课', trial: '体验' }[c] || c)
@@ -127,6 +159,33 @@ async function loadCoaches() {
 
 function addSku() {
   form.skus.push({ id: 0, name: '', sessions: 10, validDays: 365, price: 0, originalPrice: 0, newcomerPrice: 0, promoPrice: 0, promoStart: '', promoEnd: '', groupPrice: 0, groupCapacity: 0, status: 1, sort: form.skus.length + 1 })
+}
+
+async function onCoverUpload({ file }) {
+  if (!file) return
+  if (file.size > 2 * 1024 * 1024) return ElMessage.warning('图片不能超过 2MB')
+  uploading.value = true
+  try {
+    const data = await uploadImage(file)
+    form.coverUrl = data.url
+    ElMessage.success('上传成功')
+  } finally {
+    uploading.value = false
+  }
+}
+
+async function onVideoUpload({ file }) {
+  if (!file) return
+  if (file.size > 200 * 1024 * 1024) return ElMessage.warning('视频不能超过 200MB')
+  videoUploading.value = true
+  videoPercent.value = 0
+  try {
+    const data = await uploadVideo(file, (p) => (videoPercent.value = p))
+    form.introVideoUrl = data.url
+    ElMessage.success('视频上传成功')
+  } finally {
+    videoUploading.value = false
+  }
 }
 
 function openForm(row) {
@@ -201,5 +260,48 @@ onMounted(() => {
   gap: 8px;
   align-items: center;
   margin-bottom: 8px;
+}
+.cover-field {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  width: 100%;
+}
+.cover-box {
+  width: 120px;
+  height: 90px;
+  border: 1px dashed #c0c4cc;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  cursor: pointer;
+}
+.cover-box:hover {
+  border-color: #409eff;
+}
+.cover-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.cover-tip {
+  font-size: 12px;
+  color: #909399;
+  text-align: center;
+  line-height: 1.5;
+}
+.cover-url {
+  flex: 1;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.video-preview {
+  width: 280px;
+  margin-top: 8px;
+  border-radius: 6px;
+  background: #000;
 }
 </style>

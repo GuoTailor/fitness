@@ -13,7 +13,6 @@
           登 录
         </el-button>
       </el-form>
-      <p class="tip">首次启动默认账号 admin / fitness123（可在环境变量 ADMIN_INIT_PASSWORD 指定）</p>
     </el-card>
   </div>
 </template>

@@ -459,7 +459,9 @@ func promoteOneWaiting(tx *gorm.DB, classID int64) (*model.GroupWaitlist, error)
 	}
 }
 
-// CancelByCoach 教练取消团课：全部报名学员返还课时
+// CancelByCoach 教练取消团课：全部报名学员返还课时。
+// 已取消的团课允许重入（P1-16）：上次部分学员返还失败时，重试可继续补返还，
+// 幂等键 group_cancel:{classID}:{userID} 保证不重复返课时。
 func (s *GroupService) CancelByCoach(ctx context.Context, classID, coachID int64, reason string) error {
 	var gc model.GroupClass
 	if err := s.db.WithContext(ctx).First(&gc, classID).Error; err != nil {
@@ -468,29 +470,44 @@ func (s *GroupService) CancelByCoach(ctx context.Context, classID, coachID int64
 	if coachID > 0 && gc.CoachID != coachID {
 		return errs.Forbidden("只能取消自己的团课")
 	}
-	res := s.db.WithContext(ctx).Model(&model.GroupClass{}).
-		Where("id = ? AND status IN ?", classID,
-			[]string{model.GCStatusEnrolling, model.GCStatusFulfilled, model.GCStatusClosed}).
-		Updates(map[string]interface{}{"status": model.GCStatusCancelled, "cancel_reason": reason})
-	if res.RowsAffected == 0 {
-		return errs.Conflict("该团课当前不可取消")
+	if gc.Status != model.GCStatusCancelled {
+		res := s.db.WithContext(ctx).Model(&model.GroupClass{}).
+			Where("id = ? AND status IN ?", classID,
+				[]string{model.GCStatusEnrolling, model.GCStatusFulfilled, model.GCStatusClosed}).
+			Updates(map[string]interface{}{"status": model.GCStatusCancelled, "cancel_reason": reason})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return errs.Conflict("该团课当前不可取消")
+		}
+		// 课程取消：候补全部作废（不递补）
+		if err := s.db.WithContext(ctx).Model(&model.GroupWaitlist{}).
+			Where("group_class_id = ? AND status = ?", classID, model.WLStatusWaiting).
+			Update("status", model.WLStatusCanceled).Error; err != nil {
+			return err
+		}
 	}
-	// 课程取消：候补全部作废（不递补）
-	s.db.WithContext(ctx).Model(&model.GroupWaitlist{}).
-		Where("group_class_id = ? AND status = ?", classID, model.WLStatusWaiting).
-		Update("status", model.WLStatusCanceled)
 	var enrollments []model.GroupEnrollment
-	s.db.WithContext(ctx).Where("group_class_id = ? AND status = ?", classID, model.GEStatusEnrolled).Find(&enrollments)
+	if err := s.db.WithContext(ctx).Where("group_class_id = ? AND status = ?", classID, model.GEStatusEnrolled).
+		Find(&enrollments).Error; err != nil {
+		return err
+	}
 	// E6：逐人返还失败不再静默吞掉——收集失败并提示人工介入
 	failed := 0
 	for _, ge := range enrollments {
 		err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-			tx.Model(&model.GroupEnrollment{}).Where("id = ? AND status = ?", ge.ID, model.GEStatusEnrolled).
-				Update("status", model.GEStatusQuit)
-			// 作废未核销的核销码
-			tx.Model(&model.Verification{}).
+			if err := tx.Model(&model.GroupEnrollment{}).
+				Where("id = ? AND status = ?", ge.ID, model.GEStatusEnrolled).
+				Update("status", model.GEStatusQuit).Error; err != nil {
+				return err
+			}
+			// 作废未核销的核销码（0 行=已作废，幂等）
+			if err := tx.Model(&model.Verification{}).
 				Where("biz_type = ? AND enrollment_id = ? AND status = ?", "group", ge.ID, model.VerifyStatusPending).
-				Update("status", model.VerifyStatusExpired)
+				Update("status", model.VerifyStatusExpired).Error; err != nil {
+				return err
+			}
 			var mp model.MemberPackage
 			if err := tx.First(&mp, ge.MemberPackageID).Error; err == nil && mp.Status != model.MPStatusRefunded {
 				return returnOne(tx, &mp, fmt.Sprintf("group_cancel:%d:%d", classID, ge.UserID), "group_class", classID, "团课取消返还")

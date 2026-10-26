@@ -13,18 +13,18 @@ import (
 // Config 全局配置。敏感项（数据库密码、JWT secret）优先从
 // config.local.yaml（不入库）与环境变量读取，方便开发/生产切换。
 type Config struct {
-	Server   ServerConfig   `yaml:"server"`
-	DB       DBConfig       `yaml:"db"`
-	JWT      JWTConfig      `yaml:"jwt"`
-	WeChat   WeChatConfig   `yaml:"wechat"`
-	Pay      PayConfig      `yaml:"pay"`
-	Notify   NotifyConfig   `yaml:"notify"`
-	Sms      SmsConfig      `yaml:"sms"`
-	Video    VideoConfig    `yaml:"video"`
-	Upload   UploadConfig   `yaml:"upload"`
-	OwnerID  int64          `yaml:"owner_id"` // 平台化预留：单店自营阶段固定 1
-	Version  string         `yaml:"-"`
-	LoadedAt time.Time      `yaml:"-"`
+	Server   ServerConfig `yaml:"server"`
+	DB       DBConfig     `yaml:"db"`
+	JWT      JWTConfig    `yaml:"jwt"`
+	WeChat   WeChatConfig `yaml:"wechat"`
+	Pay      PayConfig    `yaml:"pay"`
+	Notify   NotifyConfig `yaml:"notify"`
+	Sms      SmsConfig    `yaml:"sms"`
+	Video    VideoConfig  `yaml:"video"`
+	Upload   UploadConfig `yaml:"upload"`
+	OwnerID  int64        `yaml:"owner_id"` // 平台化预留：单店自营阶段固定 1
+	Version  string       `yaml:"-"`
+	LoadedAt time.Time    `yaml:"-"`
 }
 
 type ServerConfig struct {
@@ -69,20 +69,20 @@ type WeChatConfig struct {
 
 type PayConfig struct {
 	// Mock 为 true 时下单直接走「模拟支付成功」，无需商户号
-	Mock          bool   `yaml:"mock"`
-	MchID         string `yaml:"mch_id"`
-	MchSerialNo   string `yaml:"mch_serial_no"`
-	APIv3Key      string `yaml:"apiv3_key"`
-	PrivateKey    string `yaml:"private_key_path"` // 商户私钥文件路径
-	NotifyURL     string `yaml:"notify_url"`
-	RefundNotify  string `yaml:"refund_notify_url"`
+	Mock         bool   `yaml:"mock"`
+	MchID        string `yaml:"mch_id"`
+	MchSerialNo  string `yaml:"mch_serial_no"`
+	APIv3Key     string `yaml:"apiv3_key"`
+	PrivateKey   string `yaml:"private_key_path"` // 商户私钥文件路径
+	NotifyURL    string `yaml:"notify_url"`
+	RefundNotify string `yaml:"refund_notify_url"`
 }
 
 type NotifyConfig struct {
 	// Mock 为 true 时不真正调用微信订阅消息，仅记录 notify_log
-	Mock      bool               `yaml:"mock"`
-	templates map[string]string  `yaml:"-"`
-	Templates map[string]string  `yaml:"templates"` // scene -> 模板 ID
+	Mock      bool              `yaml:"mock"`
+	templates map[string]string `yaml:"-"`
+	Templates map[string]string `yaml:"templates"` // scene -> 模板 ID
 }
 
 type SmsConfig struct {
@@ -93,6 +93,8 @@ type SmsConfig struct {
 type VideoConfig struct {
 	// 课程介绍视频的静态播放地址前缀（nginx 静态目录）
 	BaseURL string `yaml:"base_url"`
+	Dir     string `yaml:"dir"`    // 存储目录，默认 data/videos
+	MaxMB   int    `yaml:"max_mb"` // 单个视频上限 MB，默认 200
 }
 
 // UploadConfig 图片上传（评价图片等）。文件落本地磁盘，nginx /uploads/ 静态直出。
@@ -106,7 +108,8 @@ type UploadConfig struct {
 func Load(path string) (*Config, error) {
 	cfg := &Config{
 		Server: ServerConfig{
-			Port: 8080, Mode: "debug", BaseURL: "http://localhost:8080",
+			// 默认 release：配置文件缺失/未显式声明时走安全档，避免误以 debug 上线（P0-4）
+			Port: 8080, Mode: "release", BaseURL: "http://localhost:8080",
 			// 开发默认放行 vite dev server（admin-web:5173 / client H5:5174）；
 			// release 部署在 nginx 后同源，无需跨域
 			CORSOrigins: []string{
@@ -114,14 +117,14 @@ func Load(path string) (*Config, error) {
 				"http://localhost:5174", "http://127.0.0.1:5174",
 			},
 		},
-		DB:     DBConfig{Host: "10.96.158.189", Port: 3306, Username: "fitness", Database: "fitness"},
-		JWT:    JWTConfig{Secret: "dev-insecure-secret", ExpireHours: 24 * 30},
-		WeChat: WeChatConfig{Mock: true},
-		Pay:    PayConfig{Mock: true},
-		Notify: NotifyConfig{Mock: true},
-		Sms:    SmsConfig{Mock: true},
-		Video:  VideoConfig{BaseURL: "http://localhost:8080/videos"},
-		Upload: UploadConfig{Dir: "data/uploads", BaseURL: "http://localhost:8080/uploads", MaxMB: 2},
+		DB:      DBConfig{Host: "10.96.158.189", Port: 3306, Username: "fitness", Database: "fitness"},
+		JWT:     JWTConfig{Secret: "dev-insecure-secret", ExpireHours: 24 * 30},
+		WeChat:  WeChatConfig{Mock: true},
+		Pay:     PayConfig{Mock: true},
+		Notify:  NotifyConfig{Mock: true},
+		Sms:     SmsConfig{Mock: true},
+		Video:   VideoConfig{BaseURL: "http://localhost:8080/videos", Dir: "data/videos", MaxMB: 200},
+		Upload:  UploadConfig{Dir: "data/uploads", BaseURL: "http://localhost:8080/uploads", MaxMB: 2},
 		OwnerID: 1,
 	}
 	if err := loadYAML(path, cfg); err != nil {

@@ -41,6 +41,13 @@ ALTER TABLE app_config MODIFY cfg_value TEXT;
 -- phone 唯一索引前置：列改可空 + 空串清成 NULL（'' 会撞唯一键），去掉旧普通索引
 ALTER TABLE user MODIFY phone VARCHAR(20) NULL;
 UPDATE user SET phone = NULL WHERE phone = '';
+-- 存量重复手机号预检（P1-9）：保留最早账号的手机号，其余置 NULL，避免唯一索引报 1062 卡启动
+UPDATE user SET phone = NULL
+WHERE phone IS NOT NULL AND id NOT IN (
+  SELECT keep_id FROM (
+    SELECT MIN(id) AS keep_id FROM user WHERE phone IS NOT NULL GROUP BY phone
+  ) t
+);
 ALTER TABLE user DROP INDEX idx_user_phone;
 ALTER TABLE user ADD UNIQUE INDEX uk_user_phone (phone);
 

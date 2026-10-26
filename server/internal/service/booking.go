@@ -297,14 +297,16 @@ func deductOne(tx *gorm.DB, mp *model.MemberPackage, txnType, idemKey, bizType s
 	if res.RowsAffected == 0 {
 		return errs.Biz("剩余课时不足")
 	}
-	// 首次扣次 → 开卡
-	tx.Model(&model.MemberPackage{}).
+	// 首次扣次 → 开卡（P1-17：失败必须回滚整笔事务，否则卡未开且无有效期）
+	if err := tx.Model(&model.MemberPackage{}).
 		Where("id = ? AND status = ?", mp.ID, model.MPStatusInactive).
 		Updates(map[string]interface{}{
-			"status": model.MPStatusActive,
+			"status":       model.MPStatusActive,
 			"activated_at": time.Now(),
 			"expire_date":  time.Now().AddDate(0, 0, mp.ValidDays),
-		})
+		}).Error; err != nil {
+		return err
+	}
 	if err := tx.Create(&model.PackageTransaction{
 		MemberPackageID: mp.ID, UserID: mp.UserID, SessionsChange: -1,
 		Type: txnType, IdempotencyKey: idemKey, BizType: bizType, BizID: bizID, Remark: remark,
@@ -351,7 +353,8 @@ func (s *BookingService) OwnedBooking(ctx context.Context, userID, bookingID int
 	return &b, nil
 }
 
-func (s *BookingService) MyBookings(ctx context.Context, userID int64, status string) ([]model.Booking, error) {	q := s.db.WithContext(ctx).Where("user_id = ?", userID)
+func (s *BookingService) MyBookings(ctx context.Context, userID int64, status string) ([]model.Booking, error) {
+	q := s.db.WithContext(ctx).Where("user_id = ?", userID)
 	if status != "" {
 		q = q.Where("status = ?", status)
 	}

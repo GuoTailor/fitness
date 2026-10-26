@@ -19,3 +19,14 @@ type SmsVerification struct {
 }
 
 func (SmsVerification) TableName() string { return "sms_verification" }
+
+// SmsSendCounter 短信发送频控计数器（P1-11：单行条件自增原子化，
+// 并发请求无法穿透「60s 重发 + 单日上限」两道闸门）。
+type SmsSendCounter struct {
+	Phone      string     `gorm:"primaryKey;size:20" json:"-"`
+	SendDate   string     `gorm:"primaryKey;size:10" json:"-"`
+	SendCount  int        `gorm:"default:0" json:"-"`
+	LastSentAt *time.Time `json:"-"`
+}
+
+func (SmsSendCounter) TableName() string { return "sms_send_counter" }

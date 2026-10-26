@@ -92,10 +92,10 @@ func (p *RealPay) PrepayNative(ctx context.Context, outTradeNo string, amount in
 func (p *RealPay) Refund(ctx context.Context, refundNo, outTradeNo string, refundAmount, totalAmount int64, reason string) error {
 	svc := refunddomestic.RefundsApiService{Client: p.client}
 	_, _, err := svc.Create(ctx, refunddomestic.CreateRequest{
-		OutTradeNo: core.String(outTradeNo),
+		OutTradeNo:  core.String(outTradeNo),
 		OutRefundNo: core.String(refundNo),
-		Reason:     core.String(reason),
-		NotifyUrl:  core.String(p.cfg.RefundNotify),
+		Reason:      core.String(reason),
+		NotifyUrl:   core.String(p.cfg.RefundNotify),
 		Amount: &refunddomestic.AmountReq{
 			Refund: core.Int64(refundAmount), Total: core.Int64(totalAmount), Currency: core.String("CNY"),
 		},

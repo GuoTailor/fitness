@@ -4,11 +4,11 @@ import "time"
 
 // User 学员（微信登录）
 type User struct {
-	ID        int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	OpenID    string    `gorm:"column:openid;size:64;uniqueIndex" json:"-"`
-	UnionID   string    `gorm:"column:unionid;size:64" json:"-"`
-	Nickname  string    `gorm:"size:64" json:"nickname"`
-	AvatarURL string    `gorm:"size:512" json:"avatarUrl"`
+	ID        int64  `gorm:"primaryKey;autoIncrement" json:"id"`
+	OpenID    string `gorm:"column:openid;size:64;uniqueIndex" json:"-"`
+	UnionID   string `gorm:"column:unionid;size:64" json:"-"`
+	Nickname  string `gorm:"size:64" json:"nickname"`
+	AvatarURL string `gorm:"size:512" json:"avatarUrl"`
 	// 唯一索引（00006）：一人一号，新人价限购按手机号判重依赖此约束。
 	// 语义：NULL=未绑定（MySQL 唯一索引允许多 NULL；'' 会撞键，禁止落库）
 	Phone     *string   `gorm:"size:20;uniqueIndex" json:"phone"`

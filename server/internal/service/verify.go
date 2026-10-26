@@ -36,7 +36,7 @@ func (s *VerifyService) Scan(ctx context.Context, code string, coachID int64, by
 		return nil, errs.Biz("该核销码已失效")
 	}
 
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {		// 幂等闸门：pending → verified 只允许一个事务成功
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error { // 幂等闸门：pending → verified 只允许一个事务成功
 		res := tx.Model(&model.Verification{}).
 			Where("id = ? AND status = ?", v.ID, model.VerifyStatusPending).
 			Updates(map[string]interface{}{

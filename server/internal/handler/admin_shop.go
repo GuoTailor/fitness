@@ -295,17 +295,17 @@ func keysOf(m map[int64]bool) []int64 {
 // ---- 教练 ----
 
 type coachPayload struct {
-	Name         string `json:"name" binding:"required"`
-	AvatarURL    string `json:"avatarUrl"`
-	Gender       int8   `json:"gender"`
-	Years        int    `json:"years"`
-	Specialties  string `json:"specialties"`
-	CertImages   string `json:"certImages"`
-	Intro        string `json:"intro"`
-	IntroVideo   string `json:"introVideoUrl"`
-	UserID       int64  `json:"userId"`
-	Status       int8   `json:"status"`
-	Sort         int    `json:"sort"`
+	Name        string `json:"name" binding:"required"`
+	AvatarURL   string `json:"avatarUrl"`
+	Gender      int8   `json:"gender"`
+	Years       int    `json:"years"`
+	Specialties string `json:"specialties"`
+	CertImages  string `json:"certImages"`
+	Intro       string `json:"intro"`
+	IntroVideo  string `json:"introVideoUrl"`
+	UserID      int64  `json:"userId"`
+	Status      int8   `json:"status"`
+	Sort        int    `json:"sort"`
 }
 
 func (h *AdminShopHandler) ListCoaches(c *gin.Context) {
@@ -441,7 +441,7 @@ func (h *AdminShopHandler) SaveConfig(c *gin.Context) {
 		model.CfgReferralInviterTemplate: true, model.CfgReferralInviteeTemplate: true,
 		model.CfgCheckinTarget: true, model.CfgCheckinRewardTemplate: true,
 		model.CfgGroupExpireHours: true,
-		model.CfgPrivacyContent: true, model.CfgAgreementContent: true,
+		model.CfgPrivacyContent:   true, model.CfgAgreementContent: true,
 	}
 	if !known[req.Key] {
 		resp.Handle(c, errs.BadParam("不支持的配置项: "+req.Key))

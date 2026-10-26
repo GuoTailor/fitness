@@ -129,8 +129,8 @@ func (m *miniApp) GetPhoneNumber(ctx context.Context, phoneCode string) (string,
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	var out struct {
-		ErrCode int `json:"errcode"`
-		ErrMsg  string `json:"errmsg"`
+		ErrCode   int    `json:"errcode"`
+		ErrMsg    string `json:"errmsg"`
 		PhoneInfo struct {
 			PurePhoneNumber string `json:"purePhoneNumber"`
 		} `json:"phone_info"`

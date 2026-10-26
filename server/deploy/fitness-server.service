@@ -8,6 +8,7 @@ After=network.target mysql.service
 Type=simple
 User=fitness
 WorkingDirectory=/opt/fitness
+Environment=TZ=Asia/Shanghai
 ExecStart=/opt/fitness/fitness-server -config /opt/fitness/configs/config.yaml
 Restart=always
 RestartSec=3

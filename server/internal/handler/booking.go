@@ -60,10 +60,10 @@ func (h *BookingHandler) Slots(c *gin.Context) {
 // Create POST /api/v1/bookings
 func (h *BookingHandler) Create(c *gin.Context) {
 	var req struct {
-		CoachID          int64  `json:"coachId" binding:"required"`
-		MemberPackageID  int64  `json:"memberPackageId" binding:"required"`
-		Date             string `json:"date" binding:"required"`
-		StartMinute      int    `json:"startMinute" binding:"required"`
+		CoachID         int64  `json:"coachId" binding:"required"`
+		MemberPackageID int64  `json:"memberPackageId" binding:"required"`
+		Date            string `json:"date" binding:"required"`
+		StartMinute     int    `json:"startMinute" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.Handle(c, service.BadParamJSON())

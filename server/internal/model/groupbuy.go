@@ -16,6 +16,7 @@ type GroupBuy struct {
 	SkuID        int64      `gorm:"index:idx_gb_sku_status" json:"skuId"`
 	PackageID    int64      `json:"packageId"`
 	Capacity     int        `json:"capacity"`
+	JoinedCount  int        `gorm:"default:0" json:"joinedCount"` // 当前占席数（含未支付成员，关单/退款释放）
 	Price        int64      `json:"price"`
 	Status       int8       `gorm:"default:1;index:idx_gb_sku_status" json:"status"`
 	LeaderUserID int64      `json:"leaderUserId"`
@@ -40,9 +41,9 @@ type GroupBuyActivity struct {
 	GroupCapacity int       `json:"groupCapacity"`
 	StartAt       time.Time `json:"startAt"`
 	EndAt         time.Time `json:"endAt"`
-	MaxGroups     int       `gorm:"default:0" json:"maxGroups"`    // 0=不限
-	OpenedCount   int       `gorm:"default:0" json:"openedCount"`  // 已开团数
-	ExpireHours   int       `gorm:"default:0" json:"expireHours"`  // 0=用全局配置
+	MaxGroups     int       `gorm:"default:0" json:"maxGroups"`   // 0=不限
+	OpenedCount   int       `gorm:"default:0" json:"openedCount"` // 已开团数
+	ExpireHours   int       `gorm:"default:0" json:"expireHours"` // 0=用全局配置
 	Status        int8      `gorm:"default:1;index:idx_gba_status" json:"status"`
 	CreatedAt     time.Time `json:"createdAt"`
 	UpdatedAt     time.Time `json:"updatedAt"`

@@ -5,8 +5,8 @@ package service
 import (
 	"context"
 	"net/http"
-	"strings"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"

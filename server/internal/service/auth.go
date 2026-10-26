@@ -16,6 +16,7 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"fitness/internal/auth"
 	"fitness/internal/errs"
@@ -71,10 +72,10 @@ func (s *AuthService) WithSms(p sms.Provider, mock bool) *AuthService {
 
 // LoginResult 登录返回：token + 用户信息 + 是否教练（双角色）
 type LoginResult struct {
-	Token    string      `json:"token"`
-	User     *model.User `json:"user"`
-	IsCoach  bool        `json:"isCoach"`
-	CoachID  int64       `json:"coachId"`
+	Token   string      `json:"token"`
+	User    *model.User `json:"user"`
+	IsCoach bool        `json:"isCoach"`
+	CoachID int64       `json:"coachId"`
 }
 
 // UserLogin 小程序登录：code 换 openid，按 openid upsert 用户后签发 token
@@ -134,27 +135,32 @@ func (s *AuthService) SendLoginSms(ctx context.Context, phone string) (code stri
 	if s.smsProvider == nil {
 		return "", false, errs.Server(nil, "短信通道未启用")
 	}
-	// 频控 1：60s 内已发过 → 拒绝（取最新一条含已用记录判断）
-	var recent model.SmsVerification
-	err = s.db.WithContext(ctx).
-		Where("phone = ? AND purpose = ?", phone, model.SmsPurposeLogin).
-		Order("id DESC").First(&recent).Error
-	if err == nil && time.Since(recent.CreatedAt) < smsResendInterval {
-		return "", false, errs.Biz("发送太频繁，请稍后再试")
-	} else if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return "", false, errs.Server(err, "查询发送记录失败")
-	}
-	// 频控 2：单手机自然日上限
 	now := time.Now()
-	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	var today int64
-	if err := s.db.WithContext(ctx).Model(&model.SmsVerification{}).
-		Where("phone = ? AND purpose = ? AND created_at >= ?", phone, model.SmsPurposeLogin, dayStart).
-		Count(&today).Error; err != nil {
-		return "", false, errs.Server(err, "统计发送次数失败")
+	day := now.Format("2006-01-02")
+	// 原子频控（P1-11）：单行条件 UPDATE 同时校验 60s 重发与单日上限，并发不可穿透。
+	// 先初始化当日计数行（冲突忽略），再条件自增；0 行=被频控拦下。
+	if err := s.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).
+		Create(&model.SmsSendCounter{Phone: phone, SendDate: day}).Error; err != nil {
+		return "", false, errs.Server(err, "初始化发送计数失败")
 	}
-	if today >= smsDailyLimit {
-		return "", false, errs.Biz("今日验证码发送次数已达上限")
+	res := s.db.WithContext(ctx).Model(&model.SmsSendCounter{}).
+		Where("phone = ? AND send_date = ? AND send_count < ?", phone, day, smsDailyLimit).
+		Where("last_sent_at IS NULL OR last_sent_at < ?", now.Add(-smsResendInterval)).
+		Updates(map[string]interface{}{
+			"send_count":   gorm.Expr("send_count + 1"),
+			"last_sent_at": now,
+		})
+	if res.Error != nil {
+		return "", false, errs.Server(res.Error, "记录发送次数失败")
+	}
+	if res.RowsAffected == 0 {
+		var cur model.SmsSendCounter
+		if err := s.db.WithContext(ctx).
+			Where("phone = ? AND send_date = ?", phone, day).First(&cur).Error; err == nil &&
+			cur.SendCount >= smsDailyLimit {
+			return "", false, errs.Biz("今日验证码发送次数已达上限")
+		}
+		return "", false, errs.Biz("发送太频繁，请稍后再试")
 	}
 	n, err := crand.Int(crand.Reader, big.NewInt(1000000))
 	if err != nil {
@@ -199,10 +205,10 @@ func (s *AuthService) LoginByPhone(ctx context.Context, phone, smsCode string) (
 	if v.Attempts >= smsMaxAttempts {
 		return nil, errs.Biz("尝试次数过多，请重新获取验证码")
 	}
-	// 常量时间比较防时序侧信道；失配计一次尝试（防暴力猜码）
+	// 常量时间比较防时序侧信道；失配计一次尝试（条件更新防并发超限，P1-11）
 	if subtle.ConstantTimeCompare([]byte(smsCode), []byte(v.Code)) != 1 {
 		if err := s.db.WithContext(ctx).Model(&model.SmsVerification{}).
-			Where("id = ?", v.ID).
+			Where("id = ? AND attempts < ?", v.ID, smsMaxAttempts).
 			UpdateColumn("attempts", gorm.Expr("attempts + 1")).Error; err != nil {
 			log.Printf("[sms] 记录验证码尝试次数失败: %v", err)
 		}

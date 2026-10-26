@@ -8,6 +8,7 @@ server/configs/config.production.yaml
 # go
 server/fitness-server
 server/fitness-server.exe
+server/fitness-server-*
 server/bin/
 *.out
 coverage.txt

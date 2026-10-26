@@ -60,9 +60,9 @@ func (s *MemberService) AdjustSessions(ctx context.Context, userID, memberPackag
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&model.PackageTransaction{
 			MemberPackageID: mp.ID, UserID: userID, SessionsChange: change,
-			Type: model.TxnTypeManualAdjust,
+			Type:           model.TxnTypeManualAdjust,
 			IdempotencyKey: key,
-			BizType: "manual", BizID: 0, Remark: "[" + adminName + "] " + remark,
+			BizType:        "manual", BizID: 0, Remark: "[" + adminName + "] " + remark,
 		}).Error; err != nil {
 			if isDuplicateKey(err) {
 				return errs.Biz("重复的调整请求，请勿重复提交")

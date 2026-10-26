@@ -125,14 +125,14 @@ func TestGiftCoupon(t *testing.T) {
 	assert.Equal(t, model.TxnTypeGift, giftTxn.Type)
 	assert.Equal(t, 2, giftTxn.SessionsChange)
 
-	// 消耗 3 节后退款折算：可退 = 12 - 3 - 2(赠) = 7 × 20000 分 = 140000（按 SKU 原价折算）
+	// 消耗 3 节后退款折算：按实付金额比例退（可退 7/10，150000×7/10=105000；赠课不参与，P0-2）
 	require.NoError(t, d.Model(&model.MemberPackage{}).Where("id = ?", mp.ID).
 		Updates(map[string]interface{}{"used_sessions": 3, "status": model.MPStatusActive}).Error)
 	refund, err := svc.ApplyRefund(ctx, order.ID, 2, "x")
 	require.NoError(t, err)
 	approved, err := svc.ApproveRefund(ctx, refund.ID, 1)
 	require.NoError(t, err)
-	assert.EqualValues(t, 140000, approved.Amount)
+	assert.EqualValues(t, 105000, approved.Amount)
 	assert.Contains(t, approved.RejectReason, "赠课", "审批备注注明赠课不退")
 
 	// 券返还 usable

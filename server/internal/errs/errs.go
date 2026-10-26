@@ -5,14 +5,14 @@ package errs
 import "fmt"
 
 const (
-	CodeOK          = 0
-	CodeBadParam    = 40001
+	CodeOK           = 0
+	CodeBadParam     = 40001
 	CodeUnauthorized = 40101
-	CodeForbidden   = 40301
-	CodeNotFound    = 40401
-	CodeConflict    = 40901 // 并发冲突/重复操作
-	CodeBiz         = 42201 // 常规业务校验失败
-	CodeServer      = 50001
+	CodeForbidden    = 40301
+	CodeNotFound     = 40401
+	CodeConflict     = 40901 // 并发冲突/重复操作
+	CodeBiz          = 42201 // 常规业务校验失败
+	CodeServer       = 50001
 )
 
 type AppError struct {
@@ -30,13 +30,15 @@ func (e *AppError) Error() string {
 
 func (e *AppError) Unwrap() error { return e.Err }
 
-func New(code int, msg string) *AppError           { return &AppError{Code: code, Msg: msg} }
-func Wrap(code int, msg string, err error) *AppError { return &AppError{Code: code, Msg: msg, Err: err} }
+func New(code int, msg string) *AppError { return &AppError{Code: code, Msg: msg} }
+func Wrap(code int, msg string, err error) *AppError {
+	return &AppError{Code: code, Msg: msg, Err: err}
+}
 
-func BadParam(msg string) error         { return New(CodeBadParam, msg) }
-func Unauthorized(msg string) error     { return New(CodeUnauthorized, msg) }
-func Forbidden(msg string) error        { return New(CodeForbidden, msg) }
-func NotFound(msg string) error         { return New(CodeNotFound, msg) }
-func Conflict(msg string) error         { return New(CodeConflict, msg) }
-func Biz(msg string) error              { return New(CodeBiz, msg) }
+func BadParam(msg string) error          { return New(CodeBadParam, msg) }
+func Unauthorized(msg string) error      { return New(CodeUnauthorized, msg) }
+func Forbidden(msg string) error         { return New(CodeForbidden, msg) }
+func NotFound(msg string) error          { return New(CodeNotFound, msg) }
+func Conflict(msg string) error          { return New(CodeConflict, msg) }
+func Biz(msg string) error               { return New(CodeBiz, msg) }
 func Server(err error, msg string) error { return Wrap(CodeServer, msg, err) }

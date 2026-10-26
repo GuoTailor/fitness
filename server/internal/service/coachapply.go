@@ -144,8 +144,9 @@ func (s *CoachApplicationService) AdminList(ctx context.Context, status int, pag
 	return out, total, nil
 }
 
-// Review 审核：approve=true 通过（pending→approved 条件更新幂等闸门 → 事务内 upsert coach
-// 并绑定账号）→ 事务外通知结果；false 驳回（留痕 + 通知）。
+// Review 审核：approve=true 通过（pending→approved 条件更新幂等闸门 → 同事务内 upsert coach
+// 并绑定账号，P1-18：建档失败整体回滚，申请保持 pending 可重审）→ 事务外通知结果；
+// false 驳回（留痕 + 通知）。
 func (s *CoachApplicationService) Review(ctx context.Context, adminID, applyID int64, approve bool, reason string) (*model.CoachApplication, error) {
 	var rec model.CoachApplication
 	if err := s.db.WithContext(ctx).First(&rec, applyID).Error; err != nil {
@@ -155,23 +156,27 @@ func (s *CoachApplicationService) Review(ctx context.Context, adminID, applyID i
 	if approve {
 		newStatus = model.CoachApplyApproved
 	}
-	// 幂等闸门：pending → 已审
-	res := s.db.WithContext(ctx).Model(&model.CoachApplication{}).
-		Where("id = ? AND status = ?", applyID, model.CoachApplyPending).
-		Updates(map[string]interface{}{"status": newStatus, "reject_reason": reason, "admin_id": adminID})
-	if res.Error != nil {
-		return nil, res.Error
-	}
-	if res.RowsAffected == 0 {
-		return nil, errs.Conflict("该申请已被处理")
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 幂等闸门：pending → 已审
+		res := tx.Model(&model.CoachApplication{}).
+			Where("id = ? AND status = ?", applyID, model.CoachApplyPending).
+			Updates(map[string]interface{}{"status": newStatus, "reject_reason": reason, "admin_id": adminID})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return errs.Conflict("该申请已被处理")
+		}
+		if approve {
+			return upsertCoachTx(tx, &rec)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	rec.Status = newStatus
 	rec.RejectReason = reason
-	if approve {
-		if err := s.upsertCoach(ctx, &rec); err != nil {
-			return nil, err
-		}
-	}
 	// 事务外通知申请人（失败仅记日志）
 	if s.notify != nil {
 		text := "很遗憾，您的教练入驻申请未通过"
@@ -189,35 +194,33 @@ func (s *CoachApplicationService) Review(ctx context.Context, adminID, applyID i
 	return &rec, nil
 }
 
-// upsertCoach 通过后建档/更新并绑定申请人账号（事务内）
-func (s *CoachApplicationService) upsertCoach(ctx context.Context, rec *model.CoachApplication) error {
-	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var coach model.Coach
-		err := tx.Where("user_id = ?", rec.UserID).First(&coach).Error
-		switch {
-		case err == nil:
-			// 曾绑定过的账号：更新资料并恢复在职（停用教练重新申请的路径）
-			coach.Name, coach.Gender, coach.Years = rec.Name, rec.Gender, rec.Years
-			coach.Specialties, coach.CertImages, coach.Intro = rec.Specialties, rec.CertImages, rec.Intro
-			coach.CertVerified, coach.Status = 1, 1
-			if err := tx.Save(&coach).Error; err != nil {
-				return err
-			}
-		case err == gorm.ErrRecordNotFound:
-			coach = model.Coach{
-				OwnerID: rec.OwnerID, UserID: rec.UserID,
-				Name: rec.Name, Gender: rec.Gender, Years: rec.Years,
-				Specialties: rec.Specialties, CertImages: rec.CertImages, Intro: rec.Intro,
-				CertVerified: 1, Status: 1,
-			}
-			if err := tx.Create(&coach).Error; err != nil {
-				return err
-			}
-		default:
-			return errs.Server(err, "查询教练档案失败")
+// upsertCoachTx 通过后建档/更新并绑定申请人账号（由审核事务传入 tx，P1-18）
+func upsertCoachTx(tx *gorm.DB, rec *model.CoachApplication) error {
+	var coach model.Coach
+	err := tx.Where("user_id = ?", rec.UserID).First(&coach).Error
+	switch {
+	case err == nil:
+		// 曾绑定过的账号：更新资料并恢复在职（停用教练重新申请的路径）
+		coach.Name, coach.Gender, coach.Years = rec.Name, rec.Gender, rec.Years
+		coach.Specialties, coach.CertImages, coach.Intro = rec.Specialties, rec.CertImages, rec.Intro
+		coach.CertVerified, coach.Status = 1, 1
+		if err := tx.Save(&coach).Error; err != nil {
+			return err
 		}
-		return nil
-	})
+	case err == gorm.ErrRecordNotFound:
+		coach = model.Coach{
+			OwnerID: rec.OwnerID, UserID: rec.UserID,
+			Name: rec.Name, Gender: rec.Gender, Years: rec.Years,
+			Specialties: rec.Specialties, CertImages: rec.CertImages, Intro: rec.Intro,
+			CertVerified: 1, Status: 1,
+		}
+		if err := tx.Create(&coach).Error; err != nil {
+			return err
+		}
+	default:
+		return errs.Server(err, "查询教练档案失败")
+	}
+	return nil
 }
 
 // sanitizeCertImages 资质图校验：1~6 张、必须站内上传前缀

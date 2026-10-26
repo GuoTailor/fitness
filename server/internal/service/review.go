@@ -21,8 +21,8 @@ import (
 type ReviewService struct {
 	db             *gorm.DB
 	cfg            *ConfigService
-	uploadPrefixes []string          // 图片链接合法前缀（本站上传），默认 /uploads/
-	coupons        *CouponService    // 评价奖励发券（配置 marketing.review_reward_template）
+	uploadPrefixes []string       // 图片链接合法前缀（本站上传），默认 /uploads/
+	coupons        *CouponService // 评价奖励发券（配置 marketing.review_reward_template）
 }
 
 func NewReviewService(db *gorm.DB, cfg *ConfigService) *ReviewService {

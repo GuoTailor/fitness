@@ -22,9 +22,9 @@ type CouponTemplate struct {
 	OwnerID      int64     `gorm:"column:owner_id;default:1" json:"-"`
 	Name         string    `gorm:"size:64" json:"name"`
 	Type         string    `gorm:"size:16;default:reduce" json:"type"`
-	Threshold    int64     `json:"threshold"`                // 满 X 分可用，0=无门槛
-	Amount       int64     `json:"amount"`                   // reduce=减免分 / discount=万分比
-	PackageID    int64     `gorm:"default:0" json:"packageId"` // 限定课包，0=全场通用
+	Threshold    int64     `json:"threshold"`                   // 满 X 分可用，0=无门槛
+	Amount       int64     `json:"amount"`                      // reduce=减免分 / discount=万分比
+	PackageID    int64     `gorm:"default:0" json:"packageId"`  // 限定课包，0=全场通用
 	TotalCount   int       `gorm:"default:0" json:"totalCount"` // 发放总量，0=不限
 	IssuedCount  int       `gorm:"default:0" json:"issuedCount"`
 	PerUserLimit int       `gorm:"default:1" json:"perUserLimit"`

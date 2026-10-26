@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -54,7 +55,7 @@ func (s *FeedbackService) Write(ctx context.Context, coachID, verificationID int
 		}
 		fb = model.ClassFeedback{
 			VerificationID: verificationID,
-			CoachID: coachID, UserID: v.UserID, Content: content,
+			CoachID:        coachID, UserID: v.UserID, Content: content,
 		}
 		return tx.Create(&fb).Error
 	})
@@ -66,13 +67,17 @@ func (s *FeedbackService) Write(ctx context.Context, coachID, verificationID int
 	return &fb, nil
 }
 
-// OfVerification 单条核销的反馈（给预约/团课详情展示）
-func (s *FeedbackService) OfVerification(ctx context.Context, verificationID int64) *model.ClassFeedback {
+// OfVerification 单条核销的反馈（给预约/团课详情展示）。
+// 无反馈返回 (nil, nil)；DB 错误上抛（P0-3：原实现把 DB 错误也吞成 nil，调用方解引用必崩）。
+func (s *FeedbackService) OfVerification(ctx context.Context, verificationID int64) (*model.ClassFeedback, error) {
 	var fb model.ClassFeedback
 	if err := s.db.WithContext(ctx).Where("verification_id = ?", verificationID).First(&fb).Error; err != nil {
-		return nil
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
 	}
-	return &fb
+	return &fb, nil
 }
 
 // OfBooking 私教预约关联反馈（经核销单关联，校验归属）
@@ -83,8 +88,8 @@ func (s *FeedbackService) OfBooking(ctx context.Context, userID, bookingID int64
 		First(&v).Error; err != nil {
 		return nil
 	}
-	fb := s.OfVerification(ctx, v.ID)
-	if fb == nil {
+	fb, err := s.OfVerification(ctx, v.ID)
+	if err != nil || fb == nil {
 		return nil
 	}
 	return map[string]interface{}{"content": fb.Content, "createdAt": fb.CreatedAt, "verificationId": fb.ID}
@@ -100,8 +105,8 @@ func (s *FeedbackService) OfGroupClass(ctx context.Context, userID, classID int6
 	if err != nil {
 		return nil
 	}
-	fb := s.OfVerification(ctx, v.ID)
-	if fb == nil {
+	fb, err := s.OfVerification(ctx, v.ID)
+	if err != nil || fb == nil {
 		return nil
 	}
 	return map[string]interface{}{"content": fb.Content, "createdAt": fb.CreatedAt, "verificationId": fb.ID}
@@ -143,11 +148,19 @@ func (s *FeedbackService) CoachVerifications(ctx context.Context, coachID int64)
 	for _, v := range vs {
 		var user model.User
 		s.db.WithContext(ctx).Select("id, nickname").First(&user, v.UserID)
-		fb := s.OfVerification(ctx, v.ID)
+		fb, err := s.OfVerification(ctx, v.ID)
+		if err != nil {
+			return nil, err
+		}
+		// 已核销未写反馈是该列表常态：输出空对象，不能解引用 nil（P0-3）
+		feedback := map[string]interface{}{"content": "", "createdAt": nil}
+		if fb != nil {
+			feedback = map[string]interface{}{"content": fb.Content, "createdAt": fb.CreatedAt}
+		}
 		out = append(out, map[string]interface{}{
 			"verificationId": v.ID, "bizType": v.BizType, "verifiedAt": v.VerifiedAt,
 			"userName": user.Nickname,
-			"feedback": map[string]interface{}{"content": fb.Content, "createdAt": fb.CreatedAt},
+			"feedback": feedback,
 		})
 	}
 	return out, nil

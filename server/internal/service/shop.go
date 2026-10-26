@@ -55,29 +55,71 @@ func (s *ShopService) ListPackages(ctx context.Context, category, tag, keyword s
 	if err := q.Order("sort DESC, id DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&pkgs).Error; err != nil {
 		return nil, 0, err
 	}
-	return s.enrich(ctx, pkgs)
+	items, err := s.enrich(ctx, pkgs)
+	if err != nil {
+		return nil, 0, err
+	}
+	return items, total, nil // X1：返回真实总数，前端分页依赖 total
 }
 
-func (s *ShopService) enrich(ctx context.Context, pkgs []model.CoursePackage) ([]PackageListItem, int64, error) {
+// enrich 批量补充最低价与评分聚合（X1：两条 GROUP BY 预取，替代每课包 2 条 N+1）
+func (s *ShopService) enrich(ctx context.Context, pkgs []model.CoursePackage) ([]PackageListItem, error) {
 	items := make([]PackageListItem, 0, len(pkgs))
+	if len(pkgs) == 0 {
+		return items, nil
+	}
+	ids := make([]int64, 0, len(pkgs))
 	for _, p := range pkgs {
-		it := PackageListItem{CoursePackage: p, MinPrice: 0}
-		// 最低在售规格价
-		var minPrice *int64
-		s.db.WithContext(ctx).Model(&model.PackageSKU{}).
-			Where("package_id = ? AND status = 1", p.ID).
-			Select("MIN(price)").Scan(&minPrice)
-		if minPrice != nil {
-			it.MinPrice = *minPrice
+		ids = append(ids, p.ID)
+	}
+	// 最低在售规格价（批量）
+	type minRow struct {
+		PackageID int64
+		MinPrice  *int64
+	}
+	var minRows []minRow
+	if err := s.db.WithContext(ctx).Model(&model.PackageSKU{}).
+		Select("package_id, MIN(price) AS min_price").
+		Where("package_id IN ? AND status = 1", ids).
+		Group("package_id").Scan(&minRows).Error; err != nil {
+		return nil, err
+	}
+	minMap := make(map[int64]int64, len(minRows))
+	for _, r := range minRows {
+		if r.MinPrice != nil {
+			minMap[r.PackageID] = *r.MinPrice
 		}
-		// 课包评分聚合（已通过审核的评价）
-		s.db.WithContext(ctx).Model(&model.Review{}).
-			Where("target_type = ? AND package_id = ? AND status = ?", model.ReviewTargetPackage, p.ID, model.ReviewStatusApproved).
-			Select("COALESCE(AVG(rating),0), COUNT(*)").Row().
-			Scan(&it.RatingAvg, &it.RatingCount)
+	}
+	// 评分聚合（批量，仅已通过审核的评价）
+	type rateRow struct {
+		PackageID int64
+		Avg       float64
+		Cnt       int
+	}
+	var rateRows []rateRow
+	if err := s.db.WithContext(ctx).Model(&model.Review{}).
+		Select("package_id, COALESCE(AVG(rating),0) AS avg, COUNT(*) AS cnt").
+		Where("target_type = ? AND package_id IN ? AND status = ?",
+			model.ReviewTargetPackage, ids, model.ReviewStatusApproved).
+		Group("package_id").Scan(&rateRows).Error; err != nil {
+		return nil, err
+	}
+	rateMap := make(map[int64]rateRow, len(rateRows))
+	for _, r := range rateRows {
+		rateMap[r.PackageID] = r
+	}
+	for _, p := range pkgs {
+		it := PackageListItem{CoursePackage: p}
+		if v, ok := minMap[p.ID]; ok {
+			it.MinPrice = v
+		}
+		if r, ok := rateMap[p.ID]; ok {
+			it.RatingAvg = r.Avg
+			it.RatingCount = r.Cnt
+		}
 		items = append(items, it)
 	}
-	return items, int64(len(items)), nil
+	return items, nil
 }
 
 // PackageDetail 详情：规格 + 在售教练 + 评分 + 精选评价若干。
@@ -185,23 +227,17 @@ func (s *ShopService) CoachDetail(ctx context.Context, id int64) (map[string]int
 	if err != nil {
 		return nil, errs.NotFound("教练不存在或已停用")
 	}
-	var pkgs []PackageListItem
-	s.db.WithContext(ctx).
+	var pkgs []model.CoursePackage
+	if err := s.db.WithContext(ctx).
 		Joins("JOIN coach_package cp ON cp.package_id = course_package.id").
 		Where("cp.coach_id = ? AND course_package.status = 1", id).
-		Order("course_package.sort DESC").Find(&pkgs)
-	// enrich 在 JOIN 结果上做（复用逻辑：重新逐个查聚合）
-	items := make([]PackageListItem, 0, len(pkgs))
-	for _, p := range pkgs {
-		it := p
-		var minPrice *int64
-		s.db.WithContext(ctx).Model(&model.PackageSKU{}).
-			Where("package_id = ? AND status = 1", p.ID).
-			Select("MIN(price)").Scan(&minPrice)
-		if minPrice != nil {
-			it.MinPrice = *minPrice
-		}
-		items = append(items, it)
+		Order("course_package.sort DESC").Find(&pkgs).Error; err != nil {
+		return nil, errs.Server(err, "查询教练课包失败")
+	}
+	// 复用批量聚合（X1：最低价 + 评分一次取回，与列表语义一致）
+	items, err := s.enrich(ctx, pkgs)
+	if err != nil {
+		return nil, errs.Server(err, "查询课包聚合失败")
 	}
 	var schedules []model.CoachSchedule
 	s.db.WithContext(ctx).Where("coach_id = ? AND status = 1", id).Order("weekday, start_minute").Find(&schedules)
@@ -226,7 +262,7 @@ func (s *ShopService) Home(ctx context.Context) (map[string]interface{}, error) 
 	var hotPkgs []model.CoursePackage
 	s.db.WithContext(ctx).Where("owner_id = ? AND status = 1", s.owner).
 		Order("sold_count DESC, id DESC").Limit(6).Find(&hotPkgs)
-	hotItems, _, _ := s.enrich(ctx, hotPkgs)
+	hotItems, _ := s.enrich(ctx, hotPkgs) // 首页降级：聚合失败返回空最低价
 
 	var coaches []model.Coach
 	s.db.WithContext(ctx).Where("owner_id = ? AND status = 1", s.owner).

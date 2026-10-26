@@ -4,10 +4,10 @@ import "time"
 
 // 核销状态
 const (
-	VerifyStatusPending  = "pending"
-	VerifyStatusVerified = "verified"
+	VerifyStatusPending   = "pending"
+	VerifyStatusVerified  = "verified"
 	VerifyStatusCancelled = "cancelled"
-	VerifyStatusExpired  = "expired"
+	VerifyStatusExpired   = "expired"
 )
 
 // Verification 核销记录（学员出示码，教练/前台扫码）
@@ -48,11 +48,11 @@ func (TrainingRecord) TableName() string { return "training_record" }
 
 // 评价维度与状态
 const (
-	ReviewTargetPackage = "package"
-	ReviewTargetCoach   = "coach"
-	ReviewStatusPending = "pending"
+	ReviewTargetPackage  = "package"
+	ReviewTargetCoach    = "coach"
+	ReviewStatusPending  = "pending"
 	ReviewStatusApproved = "approved"
-	ReviewStatusHidden  = "hidden"
+	ReviewStatusHidden   = "hidden"
 )
 
 // Review 评价（双维度：课包评价 + 教练评价，各一条记录）。

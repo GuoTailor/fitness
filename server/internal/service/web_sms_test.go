@@ -20,15 +20,16 @@ func newSmsAuthSvc(t *testing.T) (*AuthService, *gorm.DB) {
 	t.Helper()
 	d, err := db.OpenSQLite()
 	require.NoError(t, err)
-	require.NoError(t, d.AutoMigrate(&model.User{}, &model.Coach{}, &model.SmsVerification{}))
+	require.NoError(t, d.AutoMigrate(&model.User{}, &model.Coach{}, &model.SmsVerification{}, &model.SmsSendCounter{}))
 	tokens := auth.NewManager("test-secret", 1)
 	return NewAuthService(d, tokens, wechat.NewMock()).WithSms(sms.NewMock(), true), d
 }
 
 func backdateSms(t *testing.T, d *gorm.DB) {
 	t.Helper()
-	require.NoError(t, d.Model(&model.SmsVerification{}).Where("id > 0").
-		Update("created_at", time.Now().Add(-2*time.Minute)).Error)
+	// 跳过 60s 重发间隔：只回拨最近发送时间，保留当日计数（日限由 counter 原子校验，P1-11）
+	require.NoError(t, d.Model(&model.SmsSendCounter{}).Where("send_count > 0").
+		Update("last_sent_at", time.Now().Add(-2*time.Minute)).Error)
 }
 
 func TestSendLoginSmsBasics(t *testing.T) {

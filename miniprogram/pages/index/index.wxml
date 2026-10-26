@@ -49,11 +49,4 @@
       </view>
     </scroll-view>
   </view>
-
-  <!-- 开发联调：后端 wechat.mock=true 时可用固定身份登录 -->
-  <view class="card dev" wx:if="{{!user}}">
-    <view class="dev-title">开发：指定 mock 身份登录</view>
-    <input class="dev-input" placeholder="如 mock-user-1 / mock-coach-1" value="{{devCode}}" bindinput="onDevInput" />
-    <button class="btn-ghost" bindtap="onDevLogin">切换身份</button>
-  </view>
 </view>

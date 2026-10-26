@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"gorm.io/gorm"
@@ -65,7 +66,8 @@ func (s *GroupBuyService) Open(ctx context.Context, userID, skuID int64) (*model
 		}
 		gb := model.GroupBuy{
 			OwnerID: pkg.OwnerID, SkuID: sku.ID, PackageID: sku.PackageID,
-			Capacity: capacity, Price: price,
+			Capacity: capacity, JoinedCount: 1, // 团长开团即占一席（P0-1）
+			Price:  price,
 			Status: model.GroupBuyEnrolling, LeaderUserID: userID,
 			ActivityID: actID,
 			ExpireAt:   now.Add(time.Duration(hours) * time.Hour),
@@ -82,32 +84,42 @@ func (s *GroupBuyService) Open(ctx context.Context, userID, skuID int64) (*model
 	return &order, nil
 }
 
-// Join 参团：团未满未过期时可按拼团价下单
+// Join 参团：团未满未过期时可按拼团价下单。
+// 占席用「状态/有效期/容量」同一条件 UPDATE 原子完成（P0-1），并发不超卖；
+// 占席后建单失败（含重复参团）整体回滚，座位自动释放。
 func (s *GroupBuyService) Join(ctx context.Context, userID, gbID int64) (*model.Order, error) {
 	var gb model.GroupBuy
 	if err := s.db.WithContext(ctx).First(&gb, gbID).Error; err != nil {
 		return nil, errs.NotFound("拼团不存在")
 	}
-	if gb.Status != model.GroupBuyEnrolling {
-		return nil, errs.Biz("该团已结束")
-	}
-	if time.Now().After(gb.ExpireAt) {
-		return nil, errs.Biz("该团已过期")
-	}
-	var joined int64
-	if err := s.db.WithContext(ctx).Model(&model.GroupBuyMember{}).
-		Where("group_buy_id = ?", gb.ID).Count(&joined).Error; err != nil {
-		return nil, err
-	}
-	if int(joined) >= gb.Capacity {
-		return nil, errs.Biz("该团已满员")
-	}
 	sku, pkg, err := s.loadSku(ctx, gb.SkuID)
 	if err != nil {
 		return nil, err
 	}
+	now := time.Now()
 	var order model.Order
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&model.GroupBuy{}).
+			Where("id = ? AND status = ? AND expire_at > ? AND joined_count < capacity",
+				gbID, model.GroupBuyEnrolling, now).
+			UpdateColumn("joined_count", gorm.Expr("joined_count + 1"))
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			var cur model.GroupBuy
+			if err := tx.First(&cur, gbID).Error; err != nil {
+				return errs.NotFound("拼团不存在")
+			}
+			switch {
+			case cur.Status != model.GroupBuyEnrolling:
+				return errs.Biz("该团已结束")
+			case !now.Before(cur.ExpireAt):
+				return errs.Biz("该团已过期")
+			default:
+				return errs.Biz("该团已满员")
+			}
+		}
 		order, err = createGroupMemberOrder(tx, &gb, userID, sku, pkg.Title)
 		return err
 	})
@@ -161,7 +173,8 @@ func (s *GroupBuyService) OnOrderPaid(ctx context.Context, orderID int64) {
 	s.TrySucceed(ctx, order.GroupBuyID)
 }
 
-// TrySucceed 已支付人数达标 → 条件 UPDATE enrolling→success（幂等闸门）→ 通知全员
+// TrySucceed 已支付人数达标 → 条件 UPDATE enrolling→success（幂等闸门）→ 通知全员。
+// 满员却被置 failed 属联动丢失，打告警由人工/任务兜底（P0-1）。
 func (s *GroupBuyService) TrySucceed(ctx context.Context, gbID int64) {
 	var gb model.GroupBuy
 	if err := s.db.WithContext(ctx).First(&gb, gbID).Error; err != nil {
@@ -175,8 +188,18 @@ func (s *GroupBuyService) TrySucceed(ctx context.Context, gbID int64) {
 	res := s.db.WithContext(ctx).Model(&model.GroupBuy{}).
 		Where("id = ? AND status = ?", gbID, model.GroupBuyEnrolling).
 		Updates(map[string]interface{}{"status": model.GroupBuySuccess, "success_at": now})
-	if res.Error != nil || res.RowsAffected == 0 {
-		return // 已成团/已失败
+	if res.Error != nil {
+		log.Printf("[groupbuy][ALERT] 成团状态落库失败 gb=%d: %v", gbID, res.Error)
+		return
+	}
+	if res.RowsAffected == 0 {
+		var cur model.GroupBuy
+		if err := s.db.WithContext(ctx).Select("status").First(&cur, gbID).Error; err == nil &&
+			cur.Status == model.GroupBuyFailed {
+			log.Printf("[groupbuy][ALERT] 满员团处于失败态（联动丢失）gb=%d paid=%d capacity=%d",
+				gbID, paid, gb.Capacity)
+		}
+		return // 已成团幂等
 	}
 	// 通知全部已支付成员（biz=团 ID，uk 天然去重）
 	var members []model.GroupBuyMember
@@ -338,12 +361,12 @@ func (s *GroupBuyService) AdminList(ctx context.Context, status int, page, pageS
 	return out, total, nil
 }
 
-// paidCount 已支付成员数（支付后进入任何已付状态都算数）
+// paidCount 已支付成员数（仅 paid：退款终态不再占有效名额，
+// 否则占席释放后新成员加入会超员成团，P0-1）
 func (s *GroupBuyService) paidCount(ctx context.Context, gbID int64) (int64, error) {
 	var n int64
 	err := s.db.WithContext(ctx).Model(&model.Order{}).
-		Where("group_buy_id = ? AND status IN ?", gbID,
-			[]string{model.OrderStatusPaid, model.OrderStatusRefund, model.OrderStatusRefunded}).
+		Where("group_buy_id = ? AND status = ?", gbID, model.OrderStatusPaid).
 		Count(&n).Error
 	return n, err
 }

@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	_ "time/tzdata" // 内嵌 IANA 时区库：Windows/精简容器也能 LoadLocation（P1-8）
 
 	"fitness/internal/auth"
 	"fitness/internal/config"
@@ -27,6 +28,14 @@ import (
 var version = "dev"
 
 func main() {
+	// 统一时区（P1-8）：预约日期/任务扫描/活动窗口均使用 time.Local，
+	// 服务器时区不是 Asia/Shanghai 时「今天」边界会整体偏移
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		log.Fatalf("加载时区 Asia/Shanghai 失败: %v", err)
+	}
+	time.Local = loc
+
 	var (
 		configPath  = flag.String("config", "configs/config.yaml", "配置文件路径")
 		migrateOnly = flag.Bool("migrate-only", false, "仅执行数据库迁移后退出")
@@ -45,6 +54,15 @@ func main() {
 	// 上线门禁（L1/L2/L3/M12）：release 模式禁止弱 secret / mock 通道 / 默认管理员密码
 	if err := cfg.ValidateForRelease(); err != nil {
 		log.Fatalf("配置不满足上线要求: %v", err)
+	}
+	// debug 模式醒目告警（P0-4）：mock 登录/短信/支付可被滥用，禁止用于生产
+	if cfg.Server.Mode != "release" {
+		log.Printf("[WARN] ================================================================")
+		log.Printf("[WARN] mode=%s（非 release）：mock 通道开启时任何人可造号/接管账号/免费入账", cfg.Server.Mode)
+		log.Printf("[WARN] wechat.mock=%v pay.mock=%v sms.mock=%v notify.mock=%v",
+			cfg.WeChat.Mock, cfg.Pay.Mock, cfg.Sms.Mock, cfg.Notify.Mock)
+		log.Printf("[WARN] 严禁用于生产环境；上线请设置 server.mode=release")
+		log.Printf("[WARN] ================================================================")
 	}
 	if cfg.DB.Password == "" {
 		log.Fatal("数据库密码为空：请在 config.local.yaml 或环境变量 DB_PASSWORD 配置")

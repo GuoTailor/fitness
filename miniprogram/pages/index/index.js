@@ -8,7 +8,6 @@ Page({
     banners: [],
     hotPackages: [],
     coaches: [],
-    devCode: '',
   },
 
   onLoad(options) {
@@ -60,15 +59,5 @@ Page({
   async onLogin() {
     await app.ensureLogin()
     this.setData({ user: app.globalData.user })
-  },
-
-  onDevInput(e) {
-    this.setData({ devCode: e.detail.value })
-  },
-  async onDevLogin() {
-    if (!this.data.devCode) return
-    await app.loginAs(this.data.devCode)
-    this.setData({ user: app.globalData.user })
-    wx.showToast({ title: '已切换身份', icon: 'none' })
   },
 })

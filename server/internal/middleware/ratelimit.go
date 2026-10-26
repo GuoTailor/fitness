@@ -12,11 +12,11 @@ import (
 )
 
 type slidingWindow struct {
-	mu      sync.Mutex
-	events  map[string][]time.Time
-	limit   int
-	window  time.Duration
-	calls   uint64 // 定期触发全量清扫（E12：IP 众多时懒删不足以回收 map 空间）
+	mu     sync.Mutex
+	events map[string][]time.Time
+	limit  int
+	window time.Duration
+	calls  uint64 // 定期触发全量清扫（E12：IP 众多时懒删不足以回收 map 空间）
 }
 
 func newSlidingWindow(limit int, window time.Duration) *slidingWindow {
@@ -90,9 +90,9 @@ func LoginRateLimit(limitPerMin int) gin.HandlerFunc {
 
 // AdminLockout 后台登录失败锁定：同一 用户名+IP 连续失败 N 次锁 M 分钟
 type AdminLockout struct {
-	mu       sync.Mutex
-	fails    map[string]int
-	lastFail map[string]time.Time
+	mu        sync.Mutex
+	fails     map[string]int
+	lastFail  map[string]time.Time
 	threshold int
 	lockTime  time.Duration
 }

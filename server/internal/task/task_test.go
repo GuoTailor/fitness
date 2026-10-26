@@ -229,3 +229,47 @@ func TestRenewalCoupon(t *testing.T) {
 	d.Model(&model.UserCoupon{}).Where("user_id = ?", user.ID).Count(&cnt)
 	assert.EqualValues(t, 1, cnt)
 }
+
+// TestCloseExpiredOrdersReleasesGroupSeat 拼团单超时关单：删除成员行并释放占席，用户可重新参团（P0-1 死团修复）
+func TestCloseExpiredOrdersReleasesGroupSeat(t *testing.T) {
+	d := setupTaskDB(t)
+	require.NoError(t, d.AutoMigrate(&model.GroupBuy{}, &model.GroupBuyMember{}, &model.GroupBuyActivity{}))
+	ctx := context.Background()
+
+	require.NoError(t, d.Create(&model.User{ID: 1, OpenID: "ou-close-1"}).Error)
+	require.NoError(t, d.Create(&model.User{ID: 2, OpenID: "ou-close-2"}).Error)
+	pkg := model.CoursePackage{OwnerID: 1, Title: "拼团关单", Category: model.PkgCategoryGroup, Status: 1}
+	require.NoError(t, d.Create(&pkg).Error)
+	sku := model.PackageSKU{
+		PackageID: pkg.ID, Name: "10次卡", Sessions: 10, ValidDays: 90,
+		Price: 100000, GroupPrice: 66000, GroupCapacity: 3, Status: 1,
+	}
+	require.NoError(t, d.Create(&sku).Error)
+
+	r := NewRunner(d, nil, config.NotifyConfig{Mock: true}, wechat.NewMockPay())
+	o1, err := r.gbSvc.Open(ctx, 1, sku.ID)
+	require.NoError(t, err)
+	o2, err := r.gbSvc.Join(ctx, 2, o1.GroupBuyID)
+	require.NoError(t, err)
+
+	// 回拨下单时间到 3 小时前，触发 2h 超时关单
+	require.NoError(t, d.Model(&model.Order{}).Where("id IN ?", []int64{o1.ID, o2.ID}).
+		Update("created_at", time.Now().Add(-3*time.Hour)).Error)
+
+	n, err := r.CloseExpiredOrders(ctx)
+	require.NoError(t, err)
+	assert.EqualValues(t, 2, n)
+
+	var gb model.GroupBuy
+	require.NoError(t, d.First(&gb, o1.GroupBuyID).Error)
+	assert.Equal(t, 0, gb.JoinedCount, "两单关单后占席全部释放")
+
+	var cnt int64
+	require.NoError(t, d.Model(&model.GroupBuyMember{}).
+		Where("group_buy_id = ?", o1.GroupBuyID).Count(&cnt).Error)
+	assert.Zero(t, cnt, "成员行已清理，用户可重新参团")
+
+	// 用户 2 可重新参团（uk 不再阻挡）
+	_, err = r.gbSvc.Join(ctx, 2, o1.GroupBuyID)
+	require.NoError(t, err)
+}

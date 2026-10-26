@@ -32,25 +32,25 @@ func (CoursePackage) TableName() string { return "course_package" }
 
 // PackageSKU 课包规格（10 次卡 / 20 次卡…）
 type PackageSKU struct {
-	ID            int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	PackageID     int64     `gorm:"index:idx_sku_pkg" json:"packageId"`
-	Name          string    `gorm:"size:64" json:"name"`
-	Sessions      int       `json:"sessions"`
-	ValidDays     int       `gorm:"default:365" json:"validDays"`
-	Price         int64     `json:"price"`         // 分
-	OriginalPrice int64     `json:"originalPrice"` // 分
-	NewcomerPrice *int64    `json:"newcomerPrice"` // P1 预留
+	ID            int64  `gorm:"primaryKey;autoIncrement" json:"id"`
+	PackageID     int64  `gorm:"index:idx_sku_pkg" json:"packageId"`
+	Name          string `gorm:"size:64" json:"name"`
+	Sessions      int    `json:"sessions"`
+	ValidDays     int    `gorm:"default:365" json:"validDays"`
+	Price         int64  `json:"price"`         // 分
+	OriginalPrice int64  `json:"originalPrice"` // 分
+	NewcomerPrice *int64 `json:"newcomerPrice"` // P1 预留
 	// 限时活动价（P1）：三列同时设置且当前时间落在 [start, end) 内才生效
 	PromoPrice *int64     `json:"promoPrice"`
 	PromoStart *time.Time `json:"promoStart"`
 	PromoEnd   *time.Time `json:"promoEnd"`
 	// 拼团（P2）：GroupPrice>0 且 GroupCapacity 2~5 时开启；拼团价不与券/新人价/活动价叠加
-	GroupPrice    int64 `gorm:"default:0" json:"groupPrice"`
-	GroupCapacity int   `gorm:"default:0" json:"groupCapacity"`
-	Status        int8  `gorm:"default:1;index:idx_sku_pkg" json:"status"`
-	Sort          int   `json:"sort"`
-	CreatedAt  time.Time  `json:"createdAt"`
-	UpdatedAt  time.Time  `json:"updatedAt"`
+	GroupPrice    int64     `gorm:"default:0" json:"groupPrice"`
+	GroupCapacity int       `gorm:"default:0" json:"groupCapacity"`
+	Status        int8      `gorm:"default:1;index:idx_sku_pkg" json:"status"`
+	Sort          int       `json:"sort"`
+	CreatedAt     time.Time `json:"createdAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
 }
 
 func (PackageSKU) TableName() string { return "package_sku" }

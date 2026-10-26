@@ -28,20 +28,33 @@ func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.Mini
 	if err != nil {
 		return nil, err
 	}
+	// 课程介绍视频（落本地磁盘，nginx /videos/ 直出；本地开发由 Go 静态直出）
+	videoSvc, err := service.NewVideoService(cfg.Video)
+	if err != nil {
+		return nil, err
+	}
 	r := gin.New()
 	// P0-5：不信任任何代理头（空配置时 ClientIP 取直连地址，防 XFF 伪造绕过限流）；
 	// nginx 反代部署时在 config.yaml server.trusted_proxies 里声明代理网段
 	if err := r.SetTrustedProxies(cfg.Server.TrustedProxies); err != nil {
 		gin.DefaultErrorWriter.Write([]byte("SetTrustedProxies: " + err.Error()))
 	}
-	// E1：请求体上限（multipart 上传单图 ≤2MB 由服务层限制，此处 10MB 防超大包拖垮服务）
+	// E1：请求体上限（multipart 上传单图 ≤2MB 由服务层限制，此处 10MB 防超大包拖垮服务）；
+	// 视频上传单独放宽到「视频上限 + 10MB 表单开销」
+	const videoUploadPath = "/admin/api/v1/uploads/video"
+	videoBodyLimit := int64(videoSvc.MaxMB())<<20 + 10<<20
 	r.Use(func(c *gin.Context) {
-		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 10<<20)
+		limit := int64(10 << 20)
+		if c.Request.URL.Path == videoUploadPath {
+			limit = videoBodyLimit
+		}
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, limit)
 		c.Next()
 	})
 	r.Use(gin.Logger(), gin.Recovery(), middleware.CORS(cfg.Server.CORSOrigins))
 	// 上传文件静态直出（开发模式服务直出；生产建议 nginx alias 同一目录）
 	r.Static("/uploads", uploadSvc.Dir())
+	r.Static("/videos", videoSvc.Dir())
 
 	couponSvc := service.NewCouponService(db)
 	cfgSvc := service.NewConfigService(db)
@@ -83,7 +96,7 @@ func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.Mini
 	adminBookingH := handler.NewAdminBookingHandler(db, bookingSvc, verifySvc).WithAudit(auditSvc)
 	reviewH := handler.NewReviewHandler(reviewSvc, verifySvc, cfg.Notify).WithAudit(auditSvc)
 	statsH := handler.NewStatsHandler(statsSvc)
-	uploadH := handler.NewUploadHandler(uploadSvc)
+	uploadH := handler.NewUploadHandler(uploadSvc, videoSvc)
 	miscH := handler.NewMiscHandler(cfgSvc)
 	couponH := handler.NewCouponHandler(couponSvc)
 	adminCouponH := handler.NewAdminCouponHandler(couponSvc).WithAudit(auditSvc)
@@ -153,7 +166,7 @@ func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.Mini
 		api.POST("/coach-applications", middleware.RequireUser(), coachApplyH.Submit)
 		api.GET("/coach-applications/mine", middleware.RequireUser(), coachApplyH.Mine)
 		// 图片上传（评价图等）
-		api.POST("/uploads", middleware.RequireUser(), uploadH.Create)
+		api.POST("/uploads", middleware.RequireUser(), middleware.LoginRateLimit(20), uploadH.Create)
 
 		// 私教预约
 		api.GET("/coaches/:id/slots", bookingH.Slots)
@@ -234,12 +247,16 @@ func Build(cfg *config.Config, db *gorm.DB, tokens *auth.Manager, mp wechat.Mini
 	}
 	a := admin.Group("", middleware.RequireAdmin())
 	{
+		// 通用：图片上传（课包封面 / 教练头像 / 轮播图），与用户端共用存储
+		a.POST("/uploads", middleware.LoginRateLimit(20), uploadH.Create)
+		// 课程介绍视频（大文件流式落盘，上限见 video.max_mb）
+		a.POST("/uploads/video", middleware.LoginRateLimit(10), uploadH.CreateVideo)
 		// 数据看板
 		a.GET("/dashboard", statsH.Dashboard)
-		// 课包
+		// 课包（含改价/规格，资金类操作，仅老板，P1-5）
 		a.GET("/packages", adminShopH.ListPackages)
-		a.POST("/packages", adminShopH.SavePackage)
-		a.POST("/packages/:id", adminShopH.SavePackage)
+		a.POST("/packages", middleware.RequireBoss(), adminShopH.SavePackage)
+		a.POST("/packages/:id", middleware.RequireBoss(), adminShopH.SavePackage)
 		// 教练
 		a.GET("/coaches", adminShopH.ListCoaches)
 		a.POST("/coaches", adminShopH.SaveCoach)

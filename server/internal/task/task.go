@@ -1,7 +1,8 @@
 // Package task 内置定时任务。两类职责：
-// 1) 消息触达：评价邀请、课时/有效期预警（notify_log 防重发）；
-// 2) 状态推进（超时/反向链路）：超时关单、课包过期、预约过期（no-show 罚没）、
-//    团课结课、退款单轮询推进终态——这些状态此前只定义、无人写入。
+//  1. 消息触达：评价邀请、课时/有效期预警（notify_log 防重发）；
+//  2. 状态推进（超时/反向链路）：超时关单、课包过期、预约过期（no-show 罚没）、
+//     团课结课、退款单轮询推进终态——这些状态此前只定义、无人写入。
+//
 // P0 单进程 goroutine + 每小时 ticker，不引入外部队列；所有推进均为幂等条件更新。
 package task
 
@@ -87,6 +88,10 @@ func (r *Runner) RunOnce(ctx context.Context) {
 	run("拼团到期", func() (int64, error) { return r.CloseGroupBuys(ctx) })
 	run("退款轮询", func() (int64, error) {
 		n, err := r.orders.PollApprovedRefunds(ctx)
+		return int64(n), err
+	})
+	run("退款孤儿修复", func() (int64, error) {
+		n, err := r.orders.RepairRefundingOrders(ctx)
 		return int64(n), err
 	})
 }
@@ -194,12 +199,55 @@ func (r *Runner) tryRenewalCoupon(ctx context.Context, userID int64) {
 
 // CloseExpiredOrders 超时关单（M2）：挂单 2 小时未支付关闭，旧价订单不可无限期支付；
 // 关单后的迟到回调在 HandlePaySuccess 内幂等应答。
+// 拼团单关单同步释放占席（删成员行 + joined_count 回退），避免未付款成员长期占位形成死团（P0-1）。
 func (r *Runner) CloseExpiredOrders(ctx context.Context) (int64, error) {
 	cutoff := time.Now().Add(-2 * time.Hour)
-	res := r.db.WithContext(ctx).Model(&model.Order{}).
+	var orders []model.Order
+	if err := r.db.WithContext(ctx).
 		Where("status = ? AND created_at < ?", model.OrderStatusPending, cutoff).
-		Update("status", model.OrderStatusClosed)
-	return res.RowsAffected, res.Error
+		Limit(500).Find(&orders).Error; err != nil {
+		return 0, err
+	}
+	var closed int64
+	for _, o := range orders {
+		closedNow := false
+		err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			res := tx.Model(&model.Order{}).
+				Where("id = ? AND status = ?", o.ID, model.OrderStatusPending).
+				Update("status", model.OrderStatusClosed)
+			if res.Error != nil {
+				return res.Error
+			}
+			if res.RowsAffected == 0 {
+				return nil // 并发已处理
+			}
+			closedNow = true
+			if o.GroupBuyID > 0 {
+				mres := tx.Where("group_buy_id = ? AND order_id = ?", o.GroupBuyID, o.ID).
+					Delete(&model.GroupBuyMember{})
+				if mres.Error != nil {
+					return mres.Error
+				}
+				if mres.RowsAffected > 0 {
+					if err := tx.Model(&model.GroupBuy{}).
+						Where("id = ? AND status = ?", o.GroupBuyID, model.GroupBuyEnrolling).
+						UpdateColumn("joined_count", gorm.Expr(
+							"CASE WHEN joined_count > 0 THEN joined_count - 1 ELSE 0 END")).Error; err != nil {
+						return err
+					}
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			log.Printf("[task] 关单 %d 失败: %v", o.ID, err)
+			continue
+		}
+		if closedNow {
+			closed++
+		}
+	}
+	return closed, nil
 }
 
 // ExpireMemberPackages 课包过期（M3）：生效中且有效期已过 → expired（消费入口另有硬校验兜底）。
@@ -291,6 +339,10 @@ func (r *Runner) CloseGroupBuys(ctx context.Context) (int64, error) {
 	}
 	var failed int64
 	for _, gb := range gbs {
+		// 先尝试成团：满员但支付联动丢失的团不应被误杀（P0-1）
+		if r.gbSvc != nil {
+			r.gbSvc.TrySucceed(ctx, gb.ID)
+		}
 		res := r.db.WithContext(ctx).Model(&model.GroupBuy{}).
 			Where("id = ? AND status = ?", gb.ID, model.GroupBuyEnrolling).
 			Update("status", model.GroupBuyFailed)
@@ -298,7 +350,7 @@ func (r *Runner) CloseGroupBuys(ctx context.Context) (int64, error) {
 			return failed, res.Error
 		}
 		if res.RowsAffected == 0 {
-			continue // 并发已处理
+			continue // 并发已处理（含刚成团）
 		}
 		failed++
 		r.autoRefundGroup(ctx, &gb)
